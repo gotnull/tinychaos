@@ -1,100 +1,335 @@
 # tinychaos
 
-A hardware random number generator using zener-diode avalanche breakdown noise as the entropy source, captured by an STM32 NUCLEO-H753ZI ADC and analysed by a C# host application.
+A hardware random number generator that captures avalanche-breakdown noise from a reverse-biased zener diode, digitises it on an STM32 NUCLEO-H753ZI, streams framed binary packets to a macOS host, and analyses them with a Python toolchain.
 
-The goal is not just another HWRNG. It is a measurable, instrumented one. Every stage is broken out so you can probe it on a breadboard, swap zeners across the zener-to-avalanche transition, and watch the noise statistics change in real time.
+Every stage of the pipeline is observable. There is no manual hex editing, no ASCII UART dump format, no opaque transport. The host parser detects CRC failures, counts dropped packets, recovers from corruption, and reports two independent sample-rate estimates.
+
+The previous C# Avalonia plan has been retired. The host stack is now Python only.
 
 ## Status
 
-| Stage              | State                                                  |
-|--------------------|--------------------------------------------------------|
-| Bill of materials  | Sourced from element14 Australia (see [BOM.md](BOM.md))|
-| element14 cart     | In progress, populated as parts are confirmed in stock |
-| Hardware design    | See [docs/hardware-design.md](docs/hardware-design.md) |
-| Firmware (STM32)   | Specification only, see [docs/firmware-notes.md](docs/firmware-notes.md) |
-| Analysis app (C#)  | Specification only, see [docs/analysis-app.md](docs/analysis-app.md) |
+| Stage                                      | State                                              |
+|--------------------------------------------|----------------------------------------------------|
+| Bill of materials (element14 Australia)    | Done. See [BOM.md](BOM.md).                        |
+| Design docs                                | Done. See [docs/](docs/).                          |
+| Authoritative pipeline doc                 | Done. See [docs/ENTROPY_CAPTURE_PIPELINE.md](docs/ENTROPY_CAPTURE_PIPELINE.md). |
+| Host Python package and CLI                | Done. See [tools/](tools/).                        |
+| Host test suite (68 tests, pytest)         | Passing.                                           |
+| Firmware portable protocol module (C)      | Done. Verified byte-identical to Python reference. |
+| Firmware on-host self-test                 | Passing. `make -C firmware test`.                  |
+| Firmware transport modules (USB CDC, UART) | Implemented. Awaiting CubeMX project generation.   |
+| Firmware ADC and DMA capture               | Skeleton present in `main_skeleton.c`; full integration after CubeMX. |
+| Live plotting (matplotlib)                 | Done. `tinychaos.plotting`, optional `plot` extra. CLI degrades cleanly if absent. |
+| Offline analysis (rolling, Z-score, FFT)   | Done. `tinychaos.analysis`. CLI `--fft` wired end-to-end. |
 
-The NUCLEO-H753ZI is excluded from the BOM. You already have one.
+## What you can do right now (no hardware required)
 
-## Why zener avalanche noise
+The host parser, CRC, framer, stats, exporters, and CLI all work against synthetic data. So does the firmware protocol module via the on-host self-test. You can verify everything in this repo runs cleanly before sourcing a single component.
 
-A reverse-biased zener diode in avalanche breakdown (typically Vz at or above about 5.5 V) produces wideband, near-white noise from the stochastic impact-ionisation cascade in the depletion region. Below about 5.5 V the same package operates by the Zener (tunneling) mechanism, which is far quieter. The 1N47xx family spans this transition exactly, which makes them ideal teaching parts:
+The next section walks through every command, in order.
 
-| 1N47xx  | Vz    | Mechanism                | Expected noise        |
-|---------|-------|--------------------------|-----------------------|
-| 1N4732  | 4.7 V | Pure Zener (tunneling)   | Low                   |
-| 1N4733  | 5.1 V | Mixed (transition)       | Medium                |
-| 1N4734  | 5.6 V | Mixed (transition)       | Medium-high           |
-| 1N4735  | 6.2 V | Pure avalanche           | High (primary source) |
+---
 
-The BOM includes all four so you can characterise the transition directly with the same circuit.
+## Step-by-step setup and verification
 
-## Signal chain (block view)
+Tested on macOS. Substitute the obvious equivalents for Linux. Windows is not a supported target for the host tools in v1.
+
+### 0. Clone
 
 ```
-   +12V to +18V clean bias supply
-              |
-              v
-   [ bias trimpot, 100k multiturn ]
-              |
-              v
-   [ zener 1N4735, reverse biased into avalanche ]
-              |
-              v  (noise tap, DC ~6.2V with mV of AC noise on top)
-              |
-   [ AC coupling cap, 1uF MKT film ]
-              |
-              v
-   [ stage 1 amplifier, NE5534, gain ~100 ]
-              |
-              v
-   [ stage 2 amplifier, LM833, gain ~10 ]
-              |
-              v  (signal now ~1Vrms, biased at mid-rail 1.65V)
-              |
-   [ ADC protection: 1k series, BAT46 Schottky clamps, 100nF ]
-              |
-              v
-   [ STM32 NUCLEO-H753ZI, ADC1 12-bit, DMA, UART ]
-              |
-              v  (USB CDC virtual COM port via ST-LINK, 921600 baud)
-              |
-   [ host PC, C# analysis app: histogram, FFT, whitening ]
+git clone <your remote here> tinychaos
+cd tinychaos
 ```
 
-Each block is documented separately:
+If this is a fresh repo with no remote yet, just `cd` into the directory.
 
-- Entropy source and bias: [docs/hardware-design.md](docs/hardware-design.md)
-- Filtering, decoupling, power: [docs/filtering-and-power.md](docs/filtering-and-power.md)
-- ADC input protection: [docs/adc-protection.md](docs/adc-protection.md)
-- STM32 firmware plan: [docs/firmware-notes.md](docs/firmware-notes.md)
-- C# analysis app plan: [docs/analysis-app.md](docs/analysis-app.md)
-- Architecture overview: [docs/architecture.md](docs/architecture.md)
+### 1. Confirm prerequisites for the host stack
 
-## Bill of materials
+```
+python3 --version          # expect 3.10 or newer
+which python3
+```
 
-See [BOM.md](BOM.md) for the complete sourced parts list with element14 product links, prices, quantities, rationale, and must-buy vs nice-to-have classification.
+If you do not have Python 3.10+, install via Homebrew:
 
-## Repo layout
+```
+brew install python
+```
+
+### 2. Create the Python virtual environment and install the host tools
+
+```
+cd tools
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+pip install -e .[dev]
+```
+
+Optional extras for live plotting:
+
+```
+pip install -e .[dev,plot]
+```
+
+### 3. Run the host test suite
+
+```
+pytest
+```
+
+Expected result: **54 passed** in under a second. The suite covers:
+
+- CRC-16/CCITT-FALSE known-answers and parametrised vectors.
+- Protocol encode and decode round-trips for 0, 1, 8, 256, and 1024 samples.
+- Explicit byte-layout assertions matching the docs.
+- Rejection of bad magic, bad CRC, wrong version, truncated, and short buffers.
+- Encode-side validation of integer ranges.
+- Streaming framer recovery from leading garbage, mid-packet bit flips, flipped magic, truncation, and sequence gaps.
+- Hypothesis-driven chunk-size invariance: same byte stream in one-byte chunks, fixed chunks, or random chunks yields the same event sequence.
+- Hypothesis-driven single-bit-flip safety: no bit flip causes a silent corrupted PacketReceived.
+- Rolling stats matched against numpy ground truth.
+- Drop tracker with uint32 wraparound.
+- Rate estimator at constant rate and across a `time_us` wraparound boundary.
+- CLI smoke test via `--replay` against a generated binary file.
+
+### 4. Smoke-test the CLI end-to-end against synthetic data
+
+Build a synthetic binary capture and replay it through the CLI:
+
+```
+python -c "
+from tinychaos.protocol import encode_packet
+with open('/tmp/tinychaos-demo.bin','wb') as f:
+    for i in range(20):
+        samples = [(i*8 + n) & 0xFFF for n in range(8)]
+        f.write(encode_packet(seq=i, time_us=i*25600, samples=samples))
+"
+python -m tinychaos.cli --replay /tmp/tinychaos-demo.bin --csv /tmp/tinychaos-demo.csv --validation-label demo --quiet
+head -5 /tmp/tinychaos-demo.csv
+```
+
+Expected: a summary line showing 20 packets, 0 bad CRC, 0 drops, 160 samples, and a CSV with header `host_time,packet_seq,stm32_time_us,sample_index,channel_index,adc_value,validation_label`.
+
+### 5. Run the firmware on-host self-test
+
+This step does NOT need any STM32 toolchain. It compiles the firmware's portable C protocol module with the system gcc/clang and verifies its CRC and byte-layout match the Python reference.
+
+```
+cd ../firmware
+make test
+```
+
+Expected output ends with:
+
+```
+encoded packet [24 bytes]:
+  DA 7A 01 00 44 33 22 11 88 77 66 55 04 00 02 01
+  04 03 06 05 08 07 92 4D
+all checks passed
+```
+
+### 6. Verify byte-for-byte parity between firmware C and host Python
+
+The host test `tools/tests/test_protocol.py::test_explicit_byte_layout` already covers the host-side bytes. To cross-check the C output against Python explicitly:
+
+```
+cd ../tools
+source .venv/bin/activate
+python -c "
+from tinychaos.protocol import encode_packet
+b = encode_packet(seq=0x11223344, time_us=0x55667788, samples=[0x0102, 0x0304, 0x0506, 0x0708])
+print(b.hex().upper())
+"
+```
+
+Expected: `DA7A0100443322118877665504000201040306050807924D` (same 24 bytes that the firmware test printed in step 5).
+
+### 7. Source the hardware
+
+See [BOM.md](BOM.md). The BOM is sourced from element14 Australia and the entire list can be added to your cart in one upload via [hardware/element14-bom.csv](hardware/element14-bom.csv) at [au.element14.com/bom-tool](https://au.element14.com/bom-tool).
+
+The STM32 NUCLEO-H753ZI is not in the CSV: you already have one.
+
+### 8. Build the analogue front-end on a breadboard
+
+Wire up the chain described in [docs/hardware-design.md](docs/hardware-design.md):
+
+- 1N4735 zener (or 4.7/5.1/5.6 V variants for the validation comparison runs).
+- 100 kohm multiturn cermet trimpot in series with the zener for bias.
+- 1 uF MKT film AC coupling cap.
+- Two-stage low-noise amplifier (NE5534 then LM833) with mid-rail biasing.
+- ADC protection: 1 kohm series + two BAT46 Schottky clamps + 100 nF anti-alias on each ADC input. See [docs/adc-protection.md](docs/adc-protection.md).
+- Decoupling: 100 nF MLCC + 10 uF electrolytic + ferrite bead at every op-amp Vcc pin.
+- A second ADC input wired permanently to a mid-rail 2 x 100 kohm divider as the baseline channel.
+
+Power the zener from 2 x 9 V batteries in series for the cleanest measurement. Power the amplifier rail and the NUCLEO from the same USB cable that hosts the data link.
+
+Safety: the STM32 ADC input must never exceed 3.3 V. The clamp network is what guarantees this even if the amplifier saturates. Do NOT skip it.
+
+### 9. Generate the STM32CubeMX project and build the firmware
+
+Detailed steps and the exact CubeMX peripheral configuration are in [firmware/README.md](firmware/README.md). Summary:
+
+1. Install: `brew install --cask stm32cubemx`, `brew install arm-none-eabi-gcc stlink`.
+2. Open CubeMX, create a project for NUCLEO-H753ZI.
+3. Configure the clock tree (480 MHz core), ADC1 channels IN0 + IN3, TIM2 as the ADC trigger at 10 kHz, TIM5 as a free-running 1 MHz counter for `time_us`, USB OTG FS in CDC mode, USART3 at 921600 baud as the fallback transport.
+4. Project Manager: Toolchain = Makefile. Project location = parent of this `firmware/` folder. Generate.
+5. Move the generated Makefile aside: `mv firmware/Makefile firmware/Makefile.cube`. The top-level `firmware/Makefile` picks it up automatically.
+6. Apply the integration edits documented in `firmware/Core/Src/main_skeleton.c`. Specifically, paste the documented snippets into the CubeMX `USER CODE BEGIN/END` markers in `main.c` and into the USB and UART completion callbacks. Do not replace the whole files.
+7. Pick the transport. Uncomment ONE of `#define ENTROPY_TRANSPORT_USB` or `#define ENTROPY_TRANSPORT_UART` in `firmware/Core/Inc/entropy_config.h`.
+8. Build: `cd firmware && make`. The ELF, HEX, and BIN are in `build/`.
+9. Flash: `make flash`, or directly `st-flash write build/tinychaos.bin 0x08000000`.
+
+### 10. Verify the firmware-to-host link with the counter pattern (no ADC yet)
+
+`main_skeleton.c` ships with `ENTROPY_USE_COUNTER_PATTERN = 1`. The firmware emits packets whose samples are a 12-bit counter rather than real ADC data. This isolates protocol and transport from analogue questions.
+
+With the board plugged in:
+
+```
+ls /dev/tty.usbmodem*
+cd tools
+source .venv/bin/activate
+python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --duration 30 --csv /tmp/counter.csv
+```
+
+Expected:
+
+- Packets received: in the low tens of thousands (depending on packet rate).
+- Bad CRC: 0.
+- Dropped packets: 0.
+- STM32-derived rate: matches `ADC_SAMPLE_RATE_HZ`.
+- Host-derived rate: within a few hundred ppm of the STM32-derived rate.
+- CSV `adc_value` column shows a clean 12-bit counter modulo 4096.
+
+If those four properties hold, the protocol, framer, transport, and clocks are all correct. Move on to ADC.
+
+### 11. Switch to real ADC capture
+
+In `main_skeleton.c` (or wherever you applied its content in your CubeMX `main.c`), set:
+
+```
+#define ENTROPY_USE_COUNTER_PATTERN 0
+```
+
+Rebuild, flash, and capture again. The CSV will now contain ADC samples instead of the counter. The two channels alternate in `channel_index` 0 and 1 as documented in [docs/ENTROPY_CAPTURE_PIPELINE.md](docs/ENTROPY_CAPTURE_PIPELINE.md) section 9.
+
+### 12. Run the validation comparison set
+
+Five short captures, each with a different physical wiring, isolate different noise sources. Each gets its own CSV file labelled via `--validation-label`:
+
+```
+mkdir -p captures
+
+# A. Shorted input. Wire the ADC input directly to the mid-rail divider tap.
+python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --duration 60 \
+    --csv captures/shorted.csv --validation-label shorted
+
+# B. Baseline divider. The default wiring of the dedicated reference channel.
+python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --duration 60 \
+    --csv captures/divider.csv --validation-label divider
+
+# C. Floating input. Leave the zener channel's ADC wire unattached.
+python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --duration 60 \
+    --csv captures/floating.csv --validation-label floating
+
+# D. Zener, wall PSU.
+python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --duration 60 \
+    --csv captures/zener_psu.csv --validation-label zener
+
+# E. Zener, battery bias.
+python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --duration 60 \
+    --csv captures/zener_battery.csv --validation-label battery
+```
+
+Expected signatures and what each isolates are described in [docs/ENTROPY_CAPTURE_PIPELINE.md](docs/ENTROPY_CAPTURE_PIPELINE.md) section 14.
+
+### 13. (Optional) Live plotting
+
+If you installed the `plot` extra:
+
+```
+python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --plot
+```
+
+A matplotlib window opens with three panels: rolling waveform per channel, cumulative histogram per channel, and a stats text panel. If matplotlib is not installed the CLI prints a friendly diagnostic and continues without plotting.
+
+### 14. (Optional) Offline FFT
+
+```
+python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --duration 30 --fft --csv /tmp/zener.csv
+```
+
+The CLI keeps up to 65 536 samples per channel in memory during capture. At exit it computes a one-sided PSD via `tinychaos.analysis.fft_psd`, prints the peak frequency and PSD value per channel, and, if matplotlib is installed, opens a plot. Verified end-to-end against a known 1 kHz sine: the CLI reports the peak within one FFT bin.
+
+---
+
+## Repository layout
 
 ```
 tinychaos/
-  README.md                  (you are here)
-  BOM.md                     (complete bill of materials)
-  docs/                      (design docs, theory and decisions)
-    architecture.md
-    hardware-design.md
-    filtering-and-power.md
-    adc-protection.md
-    firmware-notes.md
-    analysis-app.md
-  hardware/                  (schematic or KiCad project, future)
-  firmware/                  (STM32 firmware, future)
-  analysis/                  (C# analysis app, future)
+  README.md                       this file
+  BOM.md                          element14 bill of materials
+  hardware/
+    element14-bom.csv             upload to element14 BOM tool to populate the cart
+  docs/
+    ENTROPY_CAPTURE_PIPELINE.md   authoritative pipeline reference
+    architecture.md               two-zone breadboard layout, design claims
+    hardware-design.md            schematic, values, bias calcs
+    filtering-and-power.md        RC corners, decoupling, battery isolation
+    adc-protection.md             Schottky clamp network and layout
+    firmware-notes.md             superseded redirect to ENTROPY_CAPTURE_PIPELINE
+    analysis-app.md               superseded redirect to ENTROPY_CAPTURE_PIPELINE
+  tools/                          host Python package
+    pyproject.toml
+    README.md                     tools-local quickstart
+    src/tinychaos/                package source
+    tests/                        pytest suite (54 tests)
+  firmware/                       STM32 firmware
+    Makefile                      host self-test plus CubeMX-Makefile passthrough
+    README.md                     CubeMX generation and integration steps
+    Core/Inc/                     entropy_config.h, entropy_protocol.h, usb_stream.h, serial_stream.h
+    Core/Src/                     entropy_protocol.c, usb_stream.c, serial_stream.c, main_skeleton.c
+    test/                         test_protocol_host.c
+  analysis/                       reserved for future offline analysis scripts
 ```
 
-## Safety notes
+## Quick reference: every command, in one place
 
-- STM32 ADC inputs must not exceed 3.3 V. See [docs/adc-protection.md](docs/adc-protection.md) for the required series resistor and Schottky clamp network.
-- Zener bias supply may be 12 to 18 V. Keep this section isolated from the 3.3 V logic side and only connect through the AC coupling cap and protected ADC front-end.
-- Avalanche noise sources are sensitive to mains hum and switching-supply ripple. See [docs/filtering-and-power.md](docs/filtering-and-power.md) for the recommended battery-isolated test setup.
+```
+# Python host stack
+cd tools && python3 -m venv .venv && source .venv/bin/activate
+pip install -e .[dev,plot]
+pytest
+
+# Firmware on-host self-test
+cd ../firmware
+make test
+
+# Cross-implementation byte parity
+cd ../tools && source .venv/bin/activate
+python -c "from tinychaos.protocol import encode_packet; print(encode_packet(0x11223344, 0x55667788, [0x0102,0x0304,0x0506,0x0708]).hex().upper())"
+# expected: DA7A0100443322118877665504000201040306050807924D
+
+# Synthetic CLI smoke
+python -c "from tinychaos.protocol import encode_packet; open('/tmp/x.bin','wb').write(b''.join(encode_packet(i,i*25600,[(i*8+n)&0xFFF for n in range(8)]) for i in range(20)))"
+python -m tinychaos.cli --replay /tmp/x.bin --csv /tmp/x.csv --quiet
+
+# Real hardware capture (once firmware is flashed)
+python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --duration 30 --csv /tmp/run.csv
+
+# Validation run with a label
+python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --duration 60 --csv captures/zener.csv --validation-label zener
+```
+
+## Safety, in one paragraph
+
+The STM32 ADC absolute-maximum input is 3.3 V + 0.3 V. The amplifier output can saturate to its own supply rail at any time. The ADC clamp network (1 kohm series + two BAT46 Schottky + 100 nF) is mandatory and is what stands between the amplifier and the pin. Never connect the zener chain output directly to a NUCLEO ADC pin. See [docs/adc-protection.md](docs/adc-protection.md) for the layout and rationale. Bias the zener from batteries when you want the cleanest measurement; mains-derived noise on the bias rail is the most common source of "what is that 50 Hz peak in my supposedly-white-noise capture".
+
+## Where to look next
+
+- For protocol questions: [docs/ENTROPY_CAPTURE_PIPELINE.md](docs/ENTROPY_CAPTURE_PIPELINE.md).
+- For schematic-level questions: [docs/hardware-design.md](docs/hardware-design.md).
+- For firmware integration questions: [firmware/README.md](firmware/README.md).
+- For host tool API questions: read the docstrings in `tools/src/tinychaos/*.py`. The modules are small and intentionally so.

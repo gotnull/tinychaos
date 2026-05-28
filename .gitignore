@@ -34,11 +34,15 @@ Release/
 packages/
 .vs/
 
-# Python (in case any scripts land in analysis/ or tools/)
+# Python (tools/ host package)
 __pycache__/
 *.pyc
 .venv/
 venv/
+.pytest_cache/
+.hypothesis/
+*.egg-info/
+build-test/
 
 # KiCad / hardware (when schematic lands)
 *-backups/
