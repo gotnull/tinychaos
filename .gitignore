@@ -52,8 +52,14 @@ build-test/
 *.kicad_pcb-bak
 fp-info-cache
 
-# Sample captures intentionally tracked: re-include them after the
-# firmware-section *.bin catch-all above. Without these negations every
-# .bin sample under samples/ would be silently ignored.
+# Sample captures: track only the demo files; user-recorded captures
+# (e.g. capture-YYYYMMDD-HHMMSS.bin, zener-YYYYMMDD-HHMMSS.bin, anything
+# written by the GUI Record button or the CLI --raw-bin) stay ignored.
+#
+# Without these explicit negations the *.bin catch-all in the firmware
+# section above would silently ignore the seeded demo files too.
 !samples/
-!samples/*.bin
+!samples/README.md
+!samples/floating_50hz.bin
+!samples/sine_1khz.bin
+!samples/zener_synthetic.bin

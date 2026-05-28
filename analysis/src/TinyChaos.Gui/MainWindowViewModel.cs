@@ -81,6 +81,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     // Samples section
     public ObservableCollection<SampleEntry> Samples { get; } = new();
 
+    /// <summary>
+    /// Bound to the Samples ListBox <c>SelectedItems</c>. Avalonia keeps this
+    /// in sync as the user clicks / Ctrl-clicks / Shift-clicks rows.
+    /// </summary>
+    public ObservableCollection<SampleEntry> SelectedSamples { get; } = new();
+
     [ObservableProperty]
     private string _samplesDirectory;
 
@@ -89,6 +95,21 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private string _samplesStatusText = "";
+
+    [ObservableProperty]
+    private int _activeTabIndex;
+
+    [ObservableProperty]
+    private bool _isConfirmingDelete;
+
+    [ObservableProperty]
+    private string _deleteConfirmText = "";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasDeletableSelection))]
+    private int _deletableSelectedCount;
+
+    public bool HasDeletableSelection => DeletableSelectedCount > 0;
 
     // Status footer pills.
     [ObservableProperty] private string _packetsText = "0";
@@ -125,6 +146,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         EnsureDirectoryExists(_samplesDirectory);
         _firmwareDirectory = BuildFlashService.FindFirmwareDirectory() ?? "(firmware directory not found)";
 
+        // Recompute the deletable-selected count whenever the selection changes.
+        SelectedSamples.CollectionChanged += (_, _) => RecomputeDeletableCount();
+
         RefreshPorts();
         RefreshSamples();
 
@@ -132,22 +156,39 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _uiTimer.Start();
     }
 
+    private void RecomputeDeletableCount()
+    {
+        int n = 0;
+        foreach (var s in SelectedSamples)
+        {
+            if (!s.IsDemo) n++;
+        }
+        DeletableSelectedCount = n;
+    }
+
     partial void OnValidationLabelChanged(string value)
     {
         ValidationLabelEcho = string.IsNullOrWhiteSpace(value) ? "none" : value;
     }
 
-    partial void OnSelectedSampleChanged(SampleEntry? value)
+    /// <summary>
+    /// Replay the given sample and switch to the Live capture tab so the
+    /// user sees the result immediately. Called from the ListBox
+    /// DoubleTapped handler in the code-behind. Single-clicking a sample no
+    /// longer auto-plays; that change makes multi-select practical (Ctrl /
+    /// Shift clicks build up a selection without firing replays).
+    /// </summary>
+    public void PlaySample(SampleEntry entry)
     {
-        if (value is null) return;
         try
         {
             _capture.Reset();
             ModeText = "replay";
-            ConnectionStatusText = $"Replaying {value.FileName}";
+            ConnectionStatusText = $"Replaying {entry.FileName}";
             StatusDotBrush = StatusBrushes.Warning;
             ConnectButtonLabel = "Connect";
-            _ = _capture.ReplayFileAsync(value.FullPath);
+            _ = _capture.ReplayFileAsync(entry.FullPath);
+            ActiveTabIndex = 0;
         }
         catch (Exception ex)
         {
@@ -204,6 +245,60 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             SamplesStatusText = $"error: {ex.Message}";
         }
+    }
+
+    [RelayCommand]
+    private void RequestDeleteSamples()
+    {
+        // Filter out demo samples; they are protected by IsDemo.
+        int n = DeletableSelectedCount;
+        if (n == 0)
+        {
+            // Nothing deletable selected.
+            return;
+        }
+        DeleteConfirmText = n == 1
+            ? "Delete the selected sample? This cannot be undone."
+            : $"Delete {n} selected samples? This cannot be undone.";
+        IsConfirmingDelete = true;
+    }
+
+    [RelayCommand]
+    private void ConfirmDeleteSamples()
+    {
+        // Snapshot the to-delete list first; SelectedSamples may shrink as
+        // each file disappears from the underlying Samples collection.
+        var toDelete = new List<SampleEntry>();
+        foreach (var s in SelectedSamples)
+        {
+            if (!s.IsDemo) toDelete.Add(s);
+        }
+        int ok = 0, failed = 0;
+        foreach (var s in toDelete)
+        {
+            try
+            {
+                File.Delete(s.FullPath);
+                ok++;
+            }
+            catch
+            {
+                failed++;
+            }
+        }
+        IsConfirmingDelete = false;
+        DeleteConfirmText = "";
+        RefreshSamples();
+        SamplesStatusText = failed == 0
+            ? $"deleted {ok} sample{(ok == 1 ? "" : "s")}"
+            : $"deleted {ok}, failed to delete {failed}";
+    }
+
+    [RelayCommand]
+    private void CancelDeleteSamples()
+    {
+        IsConfirmingDelete = false;
+        DeleteConfirmText = "";
     }
 
     [RelayCommand]

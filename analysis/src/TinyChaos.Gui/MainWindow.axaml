@@ -52,7 +52,7 @@
                             Command="{Binding RefreshPortsCommand}"
                             Content="Refresh"
                             Margin="20,0,0,0" />
-                    <Button Grid.Column="6" Classes="secondary"
+                    <Button Grid.Column="6" Classes="record"
                             Command="{Binding ToggleRecordingCommand}"
                             Content="{Binding RecordButtonLabel}"
                             Margin="10,0,0,0" />
@@ -75,7 +75,8 @@
         <!-- ========================================= -->
         <!-- Tab control with three contextual panels   -->
         <!-- ========================================= -->
-        <TabControl Grid.Row="1" Padding="0">
+        <TabControl Grid.Row="1" Padding="0"
+                    SelectedIndex="{Binding ActiveTabIndex, Mode=TwoWay}">
 
             <!-- ============== LIVE CAPTURE ============== -->
             <TabItem Header="Live capture">
@@ -129,7 +130,7 @@
             <!-- ============== SAMPLES ============== -->
             <TabItem Header="Samples">
                 <Border Classes="card" Margin="0,12,0,0">
-                    <Grid RowDefinitions="Auto,10,*" ColumnDefinitions="*">
+                    <Grid RowDefinitions="Auto,10,Auto,Auto,*" ColumnDefinitions="*">
                         <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
                             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                                 <TextBlock Classes="h1" Text="SAMPLES" />
@@ -143,12 +144,48 @@
                                 <Button Classes="secondary"
                                         Command="{Binding OpenSamplesFolderCommand}"
                                         Content="Open folder" />
+                                <Button Classes="record"
+                                        Command="{Binding RequestDeleteSamplesCommand}"
+                                        IsEnabled="{Binding HasDeletableSelection}"
+                                        MinWidth="80"
+                                        Content="{Binding DeletableSelectedCount, StringFormat='Delete ({0})'}" />
                             </StackPanel>
                         </Grid>
 
-                        <ListBox Grid.Row="2"
+                        <!-- Inline confirmation banner. Shown only when a delete is pending. -->
+                        <Border Grid.Row="2"
+                                IsVisible="{Binding IsConfirmingDelete}"
+                                Background="#3B1E22"
+                                BorderBrush="{DynamicResource Record}"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="14,10"
+                                Margin="0,0,0,10">
+                            <Grid ColumnDefinitions="*,Auto,Auto">
+                                <TextBlock Grid.Column="0"
+                                           Text="{Binding DeleteConfirmText}"
+                                           Foreground="{DynamicResource TextPrimary}"
+                                           VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Classes="secondary"
+                                        Command="{Binding CancelDeleteSamplesCommand}"
+                                        Content="Cancel" />
+                                <Button Grid.Column="2" Classes="record"
+                                        Command="{Binding ConfirmDeleteSamplesCommand}"
+                                        Content="Confirm delete"
+                                        Margin="8,0,0,0" />
+                            </Grid>
+                        </Border>
+
+                        <!-- Helper hint above the list. -->
+                        <TextBlock Grid.Row="3"
+                                   Classes="caption"
+                                   Margin="0,0,0,8"
+                                   Text="Tip: click to select, Ctrl/Cmd-click to multi-select, double-click to replay. Demo samples are read-only." />
+
+                        <ListBox Grid.Row="4"
+                                 Name="SamplesListBox"
                                  ItemsSource="{Binding Samples}"
-                                 SelectedItem="{Binding SelectedSample, Mode=TwoWay}"
+                                 SelectionMode="Multiple"
                                  Background="{DynamicResource Surface0}"
                                  BorderBrush="{DynamicResource SurfaceBorderSoft}"
                                  BorderThickness="1"
@@ -156,21 +193,36 @@
                                  Padding="2">
                             <ListBox.ItemTemplate>
                                 <DataTemplate DataType="vm:SampleEntry">
-                                    <Grid ColumnDefinitions="*,Auto,160" Margin="6,6">
-                                        <TextBlock Grid.Column="0"
+                                    <Grid ColumnDefinitions="Auto,*,Auto,160" Margin="6,6">
+                                        <!-- Demo lock badge (or blank for user samples) -->
+                                        <Border Grid.Column="0"
+                                                IsVisible="{Binding IsDemo}"
+                                                Background="#2A3140"
+                                                BorderBrush="{DynamicResource SurfaceBorder}"
+                                                BorderThickness="1"
+                                                CornerRadius="3"
+                                                Padding="6,2"
+                                                Margin="0,0,10,0"
+                                                VerticalAlignment="Center">
+                                            <TextBlock Text="demo"
+                                                       FontSize="10"
+                                                       Foreground="{DynamicResource TextSecondary}"
+                                                       LetterSpacing="0.6" />
+                                        </Border>
+                                        <TextBlock Grid.Column="1"
                                                    Text="{Binding FileName}"
                                                    Foreground="{DynamicResource TextPrimary}"
                                                    FontSize="13"
                                                    VerticalAlignment="Center"
                                                    TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Grid.Column="1"
+                                        <TextBlock Grid.Column="2"
                                                    Text="{Binding SizeText}"
                                                    Foreground="{DynamicResource TextSecondary}"
                                                    FontFamily="Menlo,Consolas,monospace"
                                                    FontSize="11"
                                                    Margin="12,0"
                                                    VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="2"
+                                        <TextBlock Grid.Column="3"
                                                    Text="{Binding ModifiedText}"
                                                    Foreground="{DynamicResource TextSecondary}"
                                                    FontSize="11"

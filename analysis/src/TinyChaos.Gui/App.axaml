@@ -98,6 +98,27 @@
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
 
+        <!-- Record button: a strong red accent so the recording control is
+             visually distinct from the primary action. Label toggles between
+             "Record" and "Stop"; colour stays red because the button always
+             refers to the recording state. -->
+        <Style Selector="Button.record">
+            <Setter Property="Background" Value="{DynamicResource Record}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Record}" />
+            <Setter Property="MinWidth" Value="92" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Button.record /template/ ContentPresenter">
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.record:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource RecordHover}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource RecordHover}" />
+        </Style>
+
         <!-- Channel legend swatch -->
         <Style Selector="Border.swatch">
             <Setter Property="Width" Value="10" />
@@ -189,6 +210,10 @@
             <Color x:Key="AccentColor">#3B82F6</Color>
             <Color x:Key="AccentHoverColor">#5B9DF8</Color>
 
+            <!-- Record (destructive / live-capture write) -->
+            <Color x:Key="RecordColor">#E5484D</Color>
+            <Color x:Key="RecordHoverColor">#EF5961</Color>
+
             <!-- Channel palette (for legend swatches; views own their own copies) -->
             <Color x:Key="Channel0Color">#4FC3F7</Color>
             <Color x:Key="Channel1Color">#FF8040</Color>
@@ -204,6 +229,8 @@
             <SolidColorBrush x:Key="TextTertiary" Color="{StaticResource TextTertiaryColor}" />
             <SolidColorBrush x:Key="Accent" Color="{StaticResource AccentColor}" />
             <SolidColorBrush x:Key="AccentHover" Color="{StaticResource AccentHoverColor}" />
+            <SolidColorBrush x:Key="Record" Color="{StaticResource RecordColor}" />
+            <SolidColorBrush x:Key="RecordHover" Color="{StaticResource RecordHoverColor}" />
             <SolidColorBrush x:Key="Channel0Brush" Color="{StaticResource Channel0Color}" />
             <SolidColorBrush x:Key="Channel1Brush" Color="{StaticResource Channel1Color}" />
 
