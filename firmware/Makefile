@@ -55,12 +55,23 @@ clean-test:
 ifneq (,$(wildcard Makefile.cube))
 include Makefile.cube
 else
-.PHONY: all
-all: test
-	@echo
-	@echo "note: firmware build skeleton not yet generated."
-	@echo "run STM32CubeMX on tinychaos.ioc, choose Makefile as the toolchain,"
-	@echo "and save the generated Makefile as Makefile.cube in this directory."
+# CubeMX-generated build skeleton not present yet.
+#
+# When the user runs `make`, `make all`, or `make flash` in this state, we
+# print a clear "what to do next" message and exit non-zero. Without this,
+# `make flash` would fall through to `make: *** No rule to make target
+# 'flash'.  Stop.` which tells the user nothing.
+
+.PHONY: all flash _need-cube
+_need-cube:
+	@echo "error: the firmware build skeleton has not been generated yet."
+	@echo "       run STM32CubeMX on firmware/tinychaos.ioc, choose Makefile as the"
+	@echo "       toolchain, then save the generated Makefile as firmware/Makefile.cube."
+	@echo "       see firmware/README.md for the full sequence."
+	@echo "       (the host self-test target 'make test' works without CubeMX.)"
+	@false
+all: _need-cube
+flash: _need-cube
 endif
 
 .PHONY: clean

@@ -107,6 +107,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty] private IBrush _buildStatusDotBrush = StatusBrushes.Idle;
     [ObservableProperty] private bool _isBusyBuilding;
 
+    // Recording (live capture only)
+    [ObservableProperty] private bool _isRecording;
+    [ObservableProperty] private string _recordButtonLabel = "Record";
+    [ObservableProperty] private string _recordingPathText = "";
+
     public WaveformModel Waveform { get; }
     public HistogramModel Histogram { get; }
 
@@ -223,11 +228,57 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
+    private void ToggleRecording()
+    {
+        if (_capture.IsRecording)
+        {
+            _capture.StopRecording();
+            IsRecording = false;
+            RecordButtonLabel = "Record";
+            RecordingPathText = "";
+            // The new file is now flushed and visible in the samples folder.
+            RefreshSamples();
+            return;
+        }
+        if (!_capture.IsRunning)
+        {
+            ConnectionStatusText = "Connect a live capture before recording";
+            StatusDotBrush = StatusBrushes.Warning;
+            return;
+        }
+        var ts = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        var labelToken = string.IsNullOrWhiteSpace(ValidationLabel) ? "capture" : ValidationLabel;
+        var safeLabel = string.Concat(labelToken.Split(Path.GetInvalidFileNameChars()));
+        var path = Path.Combine(SamplesDirectory, $"{safeLabel}-{ts}.bin");
+        try
+        {
+            _capture.StartRecording(path);
+            IsRecording = true;
+            RecordButtonLabel = "Stop";
+            RecordingPathText = path;
+        }
+        catch (Exception ex)
+        {
+            ConnectionStatusText = $"Recording failed: {ex.Message}";
+            StatusDotBrush = StatusBrushes.Error;
+        }
+    }
+
+    [RelayCommand]
     private void ToggleConnection()
     {
         if (_capture.IsRunning)
         {
             _capture.Stop();
+            // Stopping the capture also stops recording (CaptureService.Stop
+            // calls StopRecording). Mirror that into the view-model state.
+            if (IsRecording)
+            {
+                IsRecording = false;
+                RecordButtonLabel = "Record";
+                RecordingPathText = "";
+                RefreshSamples();
+            }
             ConnectButtonLabel = "Connect";
             ConnectionStatusText = "Disconnected";
             StatusDotBrush = StatusBrushes.Idle;

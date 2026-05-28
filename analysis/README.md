@@ -148,7 +148,9 @@ dotnet run --project src/TinyChaos.Gui -c Release
 
 The window is split into three persistent sections plus a tab strip:
 
-1. **Persistent CONNECTION card** at the top. Port dropdown (live-populated from `SerialPort.GetPortNames()`), Refresh button, Connect / Disconnect toggle, validation-label text box. A status dot and short text show idle / connected / replaying / error states. Stays visible across all tabs because you usually want to see connection state regardless of what you are doing.
+1. **Persistent CONNECTION card** at the top. Port dropdown (live-populated from `SerialPort.GetPortNames()`), Refresh button, Connect / Disconnect toggle, validation-label text box, **Record / Stop** toggle. A status dot and short text show idle / connected / replaying / error states. Stays visible across all tabs because you usually want to see connection state regardless of what you are doing.
+
+   **Recording**: with a live capture running, clicking Record writes the raw incoming byte stream to a timestamped `.bin` file under the samples directory (e.g. `samples/zener-20260528-153012.bin`). The filename uses the current validation label as a prefix (or `capture-` if no label is set). Stop recording either by clicking the Record button again or by disconnecting; the file flushes to disk and immediately appears in the Samples tab list (the samples list auto-refreshes on stop). Recorded files are the same on-wire format the firmware emits and the same format the Samples tab replays, so a capture you recorded yourself can be re-loaded and inspected later just like a synthetic sample.
 2. **TabControl** in the middle, three tabs:
    - **Live capture** tab. Three stacked cards:
      - **WAVEFORM** card. Rolling-window waveform per channel with a channel-colour legend (channel 0 zener / channel 1 baseline). Y-axis ticks at 0 / 1024 / 2048 / 3072 / 4095 (12-bit). Mid-rail dashed reference line. 60 fps redraw.

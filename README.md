@@ -14,7 +14,7 @@ Every stage of the pipeline is observable. There is no manual hex editing, no AS
 | Host Python package and CLI                | Done. See [tools/](tools/).                        |
 | Host Python test suite (68 tests, pytest)  | Passing.                                           |
 | Host C# .NET 8 solution and CLI            | Done. See [analysis/](analysis/).                  |
-| Host C# Avalonia GUI (cross-platform)      | Done. Live waveform (60 fps), cumulative histogram, per-channel statistics, samples-replay panel that lists `samples/*.bin` and plays them back on click, and a BUILD & FLASH panel that shells out to the firmware Makefile (Self-test, Build, Flash) with a live streaming console. macOS, Windows, Linux from one codebase. See [analysis/README.md](analysis/README.md). |
+| Host C# Avalonia GUI (cross-platform)      | Done. Tabbed layout: Live capture (60 fps waveform, cumulative histogram, per-channel statistics), Samples (replay any `.bin`), Firmware (build + flash via the firmware Makefile with a live streaming console). Persistent connection toolbar with a Record / Stop toggle that writes the live byte stream to a timestamped `.bin` under `samples/`. macOS, Windows, Linux from one codebase. See [analysis/README.md](analysis/README.md). |
 | Tracked sample captures                    | Three synthetic `.bin` files under [samples/](samples/) so the GUI and CLI replay paths can be exercised without hardware. See [samples/README.md](samples/README.md). |
 | Host C# test suite (xUnit)                 | Code written; tests run by anyone with the .NET 8 SDK via `dotnet test`. |
 | Firmware portable protocol module (C)      | Done. Verified byte-identical to Python and C# references. |

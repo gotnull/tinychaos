@@ -47,7 +47,14 @@ public sealed class CaptureService : IDisposable
     private Task? _readTask;
     private Stopwatch? _wall;
 
+    // Optional raw-stream recording. While non-null, every chunk read from
+    // the serial port is also appended to this file before being fed to the
+    // framer. Writes happen on the read thread; the GUI manages start/stop.
+    private FileStream? _recordingStream;
+
     public bool IsRunning { get; private set; }
+    public bool IsRecording => _recordingStream != null;
+    public string? RecordingPath { get; private set; }
 
     public CaptureService(WaveformModel waveform, HistogramModel histogram, int channelCount)
     {
@@ -86,6 +93,31 @@ public sealed class CaptureService : IDisposable
         _cts?.Dispose();
         _cts = null;
         _readTask = null;
+        StopRecording();
+    }
+
+    /// <summary>
+    /// Start writing the raw incoming byte stream to <paramref name="path"/>.
+    /// Overwrites any existing file. Recording continues until Stop or
+    /// StopRecording is called.
+    /// </summary>
+    public void StartRecording(string path)
+    {
+        StopRecording();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        _recordingStream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read);
+        RecordingPath = path;
+    }
+
+    /// <summary>Stop an active recording and close the file. No-op if none.</summary>
+    public void StopRecording()
+    {
+        var stream = _recordingStream;
+        _recordingStream = null;
+        if (stream is null) return;
+        try { stream.Flush(); } catch { /* swallow */ }
+        try { stream.Dispose(); } catch { /* swallow */ }
+        RecordingPath = null;
     }
 
     /// <summary>
@@ -184,6 +216,17 @@ public sealed class CaptureService : IDisposable
             catch (TimeoutException) { continue; }
             catch { break; }
             if (n <= 0) continue;
+
+            // Mirror the raw chunk into the recording file before framing.
+            // This preserves the on-the-wire bytes exactly (including any
+            // resync noise), so a recorded file replays identically.
+            var rec = _recordingStream;
+            if (rec is not null)
+            {
+                try { rec.Write(buf, 0, n); }
+                catch { /* swallow; recording failure must not break capture */ }
+            }
+
             foreach (var ev in framer.Feed(buf.AsMemory(0, n)))
             {
                 HandleEvent(ev);

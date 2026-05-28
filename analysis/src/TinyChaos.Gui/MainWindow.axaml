@@ -20,7 +20,7 @@
         <!-- Persistent connection toolbar              -->
         <!-- ========================================= -->
         <Border Grid.Row="0" Classes="card" Margin="0,0,0,12">
-            <Grid RowDefinitions="Auto,12,Auto">
+            <Grid RowDefinitions="Auto,12,Auto,Auto">
                 <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
                     <TextBlock Grid.Column="0" Classes="h1" Text="CONNECTION" />
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
@@ -34,7 +34,7 @@
                 </Grid>
 
                 <Grid Grid.Row="2"
-                      ColumnDefinitions="Auto,*,20,Auto,220,Auto,Auto"
+                      ColumnDefinitions="Auto,*,20,Auto,220,Auto,Auto,Auto"
                       RowDefinitions="Auto">
                     <TextBlock Grid.Column="0" Classes="formLabel" Text="Port" />
                     <ComboBox Grid.Column="1"
@@ -52,11 +52,23 @@
                             Command="{Binding RefreshPortsCommand}"
                             Content="Refresh"
                             Margin="20,0,0,0" />
-                    <Button Grid.Column="6" Classes="primary"
+                    <Button Grid.Column="6" Classes="secondary"
+                            Command="{Binding ToggleRecordingCommand}"
+                            Content="{Binding RecordButtonLabel}"
+                            Margin="10,0,0,0" />
+                    <Button Grid.Column="7" Classes="primary"
                             Command="{Binding ToggleConnectionCommand}"
                             Content="{Binding ConnectButtonLabel}"
                             Margin="10,0,0,0" />
                 </Grid>
+
+                <!-- Recording-path readout, shown only while recording -->
+                <TextBlock Grid.Row="3"
+                           Classes="caption"
+                           Margin="0,8,0,0"
+                           Text="{Binding RecordingPathText, StringFormat='recording to {0}'}"
+                           IsVisible="{Binding IsRecording}"
+                           HorizontalAlignment="Right" />
             </Grid>
         </Border>
 

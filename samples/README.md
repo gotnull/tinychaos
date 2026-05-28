@@ -2,7 +2,13 @@
 
 Small synthetic `.bin` files in the on-wire format (see [../docs/ENTROPY_CAPTURE_PIPELINE.md](../docs/ENTROPY_CAPTURE_PIPELINE.md) section 8). They exist so the GUI, the Python CLI, and the C# CLI can be exercised end to end without any STM32 attached.
 
-Drop any additional capture files (whether you produced them with `tinychaos-host --raw-bin out.bin` from the CLI or by capturing real hardware) into this folder and they will appear automatically in the GUI's SAMPLES card.
+Three ways to add more `.bin` files to this folder:
+
+- **Avalonia GUI Record button**: connect to a live capture, click **Record** in the connection toolbar. The GUI writes a timestamped file here (e.g., `zener-20260528-153012.bin`) until you click **Stop** or disconnect. The new file shows up in the Samples tab immediately.
+- **Python CLI**: `python -m tinychaos.cli --port <PORT> --raw-bin samples/my-capture.bin`
+- **C# CLI**: not yet wired (no `--raw-bin` equivalent), but the GUI's Record button uses the same C# library so the result is identical on the wire.
+
+Any `.bin` you drop into this folder will appear automatically in the GUI's Samples tab.
 
 ## What is in each file
 
