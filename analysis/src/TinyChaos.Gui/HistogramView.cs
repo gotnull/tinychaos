@@ -116,16 +116,11 @@ public sealed class HistogramView : Control
             context.DrawGeometry(null, linePen, lineGeom);
         }
 
-        // x-axis hint
-        var xLabel = new FormattedText(
-            "ADC code",
-            CultureInfo.InvariantCulture,
-            FlowDirection.LeftToRight,
-            AxisTypeface, 10.5,
-            AxisTextBrush);
-        context.DrawText(xLabel,
-            new Point(plotRect.Left + (plotRect.Width - xLabel.Width) / 2,
-                      bounds.Height - BottomAxisHeight + 2));
+        // No in-chart x-axis caption: the card header already shows
+        // "ADC code: 0 to 4095 (12-bit)" right next to the title, and the
+        // tick labels (0 / 1024 / 2048 / 3072 / 4095) in the bottom margin
+        // make the units self-evident. A second caption only collides with
+        // the middle tick.
     }
 
     private static void DrawAxes(DrawingContext context, Rect plotRect)

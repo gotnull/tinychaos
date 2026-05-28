@@ -49,7 +49,11 @@ public sealed class WaveformView : Control
 
     public WaveformView()
     {
-        _redrawTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(33), DispatcherPriority.Render, OnTick);
+        // 60 fps. Aligns with standard 60 Hz displays; on ProMotion (120 Hz)
+        // the compositor will just present every other tick. The per-frame
+        // cost is trivial (snapshot a 2048-element ring buffer, draw one
+        // StreamGeometry per channel through Skia).
+        _redrawTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(16), DispatcherPriority.Render, OnTick);
         _redrawTimer.Start();
     }
 
