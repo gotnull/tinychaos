@@ -5,11 +5,15 @@ modes (CSV and raw binary). Optional live plotting is gated behind the
 ``plot`` extra; if matplotlib is not installed the CLI prints a friendly
 diagnostic and exits cleanly.
 
-Examples:
+Examples (substitute the real serial-port name for your OS):
 
-    python -m tinychaos.cli --port /dev/tty.usbmodem... --csv out.csv
-    python -m tinychaos.cli --port /dev/tty.usbmodem... --duration 60 \
-        --csv labels/zener.csv --validation-label zener
+    # macOS:
+    python -m tinychaos.cli --port /dev/tty.usbmodemXXXXX --csv out.csv
+    # Linux:
+    python -m tinychaos.cli --port /dev/ttyACM0 --csv out.csv
+    # Windows:
+    python -m tinychaos.cli --port COM4 --csv out.csv
+
     python -m tinychaos.cli --replay capture.bin --csv replay.csv
 """
 
@@ -45,7 +49,7 @@ def build_argparser() -> argparse.ArgumentParser:
     src = parser.add_mutually_exclusive_group(required=True)
     src.add_argument(
         "--port",
-        help="Serial port path, e.g. /dev/tty.usbmodemXXXX",
+        help="Serial port path. Windows: COMx; macOS: /dev/tty.usbmodemXXXXX; Linux: /dev/ttyACM0",
     )
     src.add_argument(
         "--replay",

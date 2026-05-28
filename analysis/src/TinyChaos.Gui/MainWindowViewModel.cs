@@ -55,6 +55,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     private readonly CaptureService _capture;
+    private readonly BuildFlashService _buildFlash = new();
     private readonly DispatcherTimer _uiTimer;
 
     public ObservableCollection<string> AvailablePorts { get; } = new();
@@ -99,6 +100,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _validationLabelEcho = "none";
     [ObservableProperty] private string _modeText = "live";
 
+    // Build / Flash card
+    [ObservableProperty] private string _firmwareDirectory;
+    [ObservableProperty] private string _buildLog = "";
+    [ObservableProperty] private string _buildStatusText = "idle";
+    [ObservableProperty] private IBrush _buildStatusDotBrush = StatusBrushes.Idle;
+    [ObservableProperty] private bool _isBusyBuilding;
+
     public WaveformModel Waveform { get; }
     public HistogramModel Histogram { get; }
 
@@ -110,6 +118,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         _samplesDirectory = DefaultSamplesDirectory;
         EnsureDirectoryExists(_samplesDirectory);
+        _firmwareDirectory = BuildFlashService.FindFirmwareDirectory() ?? "(firmware directory not found)";
 
         RefreshPorts();
         RefreshSamples();
@@ -281,6 +290,69 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private static void EnsureDirectoryExists(string path)
     {
         try { Directory.CreateDirectory(path); } catch { /* swallow */ }
+    }
+
+    // ----- Build & Flash commands -----
+
+    [RelayCommand]
+    private Task BuildFirmware() => RunMakeTargetAsync(target: "", label: "build");
+
+    [RelayCommand]
+    private Task FlashFirmware() => RunMakeTargetAsync(target: "flash", label: "flash");
+
+    [RelayCommand]
+    private Task RunFirmwareSelfTest() => RunMakeTargetAsync(target: "test", label: "host test");
+
+    [RelayCommand]
+    private void ClearBuildLog() => BuildLog = "";
+
+    private async Task RunMakeTargetAsync(string target, string label)
+    {
+        if (IsBusyBuilding)
+        {
+            AppendBuildLine("! a build/flash is already running");
+            return;
+        }
+        IsBusyBuilding = true;
+        BuildStatusText = $"{label}ing...";
+        BuildStatusDotBrush = StatusBrushes.Warning;
+        try
+        {
+            int code = await _buildFlash.RunMakeAsync(
+                FirmwareDirectory,
+                target,
+                AppendBuildLine);
+            if (code == 0)
+            {
+                BuildStatusText = $"{label} ok";
+                BuildStatusDotBrush = StatusBrushes.Connected;
+            }
+            else
+            {
+                BuildStatusText = $"{label} failed (exit {code})";
+                BuildStatusDotBrush = StatusBrushes.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendBuildLine($"! exception: {ex.Message}");
+            BuildStatusText = $"{label} crashed";
+            BuildStatusDotBrush = StatusBrushes.Error;
+        }
+        finally
+        {
+            IsBusyBuilding = false;
+        }
+    }
+
+    private void AppendBuildLine(string line)
+    {
+        // Marshal back to the UI thread; the subprocess streams output from
+        // a worker thread.
+        Dispatcher.UIThread.Post(() =>
+        {
+            BuildLog = string.IsNullOrEmpty(BuildLog) ? line : BuildLog + "\n" + line;
+        });
     }
 
     public void Dispose()

@@ -144,9 +144,46 @@ cd analysis
 dotnet run --project src/TinyChaos.Gui -c Release
 ```
 
-The window opens with a Port dropdown (populated from `SerialPort.GetPortNames()`), a Refresh button, a Connect / Disconnect toggle, and a Label text box (written into the validation_label CSV column if CSV export is added later). Three stacked panels show the live waveform per channel (top, 2/3 of the height), the cumulative histogram (middle), and the per-channel statistics (bottom). A status bar runs along the bottom of the window with packets, bad CRC, drops, resync bytes, and the dual sample-rate estimate.
+### Panels
 
-Both views are custom Avalonia Controls that override `Render`. They poll their backing models on a 30 Hz (waveform) and 10 Hz (histogram) dispatcher timer, decoupling render rate from packet rate. The capture service reads bytes on a background `Task.Run` thread, feeds them through `TinyChaos.Protocol.Framer`, and appends decoded samples into thread-safe `WaveformModel` and `HistogramModel` instances under a per-model lock.
+The window is laid out as five cards plus a status footer:
+
+1. **CONNECTION** card. Port dropdown (live-populated from `SerialPort.GetPortNames()`), Refresh button, Connect / Disconnect toggle, validation-label text box. A status dot and short text show idle / connected / replaying / error states.
+2. **SAMPLES** card. ListBox of every `*.bin` file in the samples directory. Each row shows file name, file size, and "modified" age (e.g., "3 min ago", "2 d ago"). Click a row and the GUI:
+   - Stops any active live capture
+   - Resets all stats, the waveform ring buffer, and the histogram
+   - Opens the file through `TinyChaos.Protocol.Framer` and replays it
+   The Refresh button re-enumerates the directory; the Open folder button opens the directory in Finder / Explorer / xdg-open.
+3. **WAVEFORM** card. Live rolling-window waveform per channel with a channel-colour legend (channel 0 zener / channel 1 baseline). Y-axis ticks at 0 / 1024 / 2048 / 3072 / 4095 (12-bit). Mid-rail dashed reference line. 60 fps redraw.
+4. **DISTRIBUTION** card. Cumulative per-channel histogram drawn as line envelopes with a low-alpha fill. X-axis ticks at the same 12-bit codes. 10 Hz redraw (histograms change slowly).
+5. **PER-CHANNEL STATISTICS** card. Monospaced row per channel showing n, min, max, mean, std.
+6. **BUILD & FLASH** card. Self-test, Build, and Flash buttons that shell out to `make`, `make` (default target), and `make flash` respectively in the firmware directory. A `Clear` button resets the streaming console. The console is a scrollable monospaced text panel that captures stdout and stderr from the subprocess line by line; stderr lines are prefixed with `! ` for visual distinction. A status indicator next to the title shows idle / building / flashing / ok / failed. Buttons disable while a subprocess is running so you cannot double-fire.
+
+   Firmware directory discovery: same algorithm as samples (`TINYCHAOS_FIRMWARE` env var, walk up looking for `firmware/` next to `.git`, or display "not found" if neither resolves).
+
+Bottom **status footer** lists mode (live / replay), packets, bad CRC count, dropped packets, resync bytes, the STM32-derived sample rate, the host-derived sample rate, and the active validation label, all in tabular monospaced pill badges.
+
+### Samples directory discovery
+
+The GUI looks for samples in this order:
+
+1. The `TINYCHAOS_SAMPLES` environment variable, if it points at an existing directory.
+2. Walk up from the executable's `AppContext.BaseDirectory` looking for a `samples/` folder next to a `.git` entry. This finds `<repo-root>/samples/` during development and from any checkout.
+3. Fall back to `~/tinychaos-samples/`, created on first run.
+
+To override at launch:
+
+```
+TINYCHAOS_SAMPLES=/path/to/my/captures dotnet run --project src/TinyChaos.Gui -c Release
+```
+
+### Threading and refresh
+
+Both views are custom Avalonia `Control` subclasses that override `Render`. They poll their backing models on a 60 Hz dispatcher timer for the waveform and 10 Hz for the histogram, decoupling render rate from packet rate.
+
+The capture service reads bytes on a background `Task.Run` thread, feeds them through `TinyChaos.Protocol.Framer`, and appends decoded samples into thread-safe `WaveformModel` and `HistogramModel` instances under a per-model lock. The view-model has a separate 10 Hz dispatcher timer that re-formats the status-pill strings from `CaptureService.Snapshot()`.
+
+This producer/consumer split means the UI stays smooth at 60 fps even when the firmware is pumping 100 kHz × 2 channels of samples; the renderer just takes a fresh ring-buffer snapshot on its own clock.
 
 ### Publishing standalone app bundles
 
@@ -166,7 +203,6 @@ The resulting `tinychaos-gui` binary is in `src/TinyChaos.Gui/bin/Release/net8.0
 ## Out of scope for now
 
 - FFT and Z-score analysis in the C# host. The Python `tinychaos.analysis` module covers this and produces CSVs that any tool (including the C# host) can read.
-- CSV export from the GUI. The CLI is the canonical CSV producer; the GUI is for live monitoring. Adding CSV export is straightforward: instantiate `TinyChaos.Host.Export.CsvExporter` in `CaptureService` and call `WritePacket` on each `PacketReceivedEvent`.
-- Replay-from-file mode in the GUI. Use the CLI with `--replay` for that.
+- CSV export from the GUI. The CLI is the canonical CSV producer; the GUI is for live monitoring and replay inspection. Adding CSV export is straightforward: instantiate `TinyChaos.Host.Export.CsvExporter` in `CaptureService` and call `WritePacket` on each `PacketReceivedEvent`.
 
 These are deliberate scope cuts to keep the v1 .NET surface small and reliable. Add them when you need them; the protocol and stats layers will not need to change.

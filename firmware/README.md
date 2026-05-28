@@ -42,15 +42,39 @@ The hex string above is also produced bit-identical by the Python encoder for th
 
 ## Building the real firmware
 
-Prerequisites on macOS:
+The firmware build is fully cross-platform: same CubeMX-generated project, same `arm-none-eabi-gcc` toolchain, same Makefile, same `st-flash` flashing utility. Only the installer commands change per OS.
+
+### Prerequisites
+
+**macOS** (Homebrew):
 
 ```
 brew install --cask stm32cubemx
 brew install arm-none-eabi-gcc
-brew install stlink                   # st-flash for the flashing target
+brew install stlink
 ```
 
-Steps:
+`make` is already on macOS by default (ships with the Command Line Tools).
+
+**Windows**:
+
+- STM32CubeMX: download the Windows installer from [st.com/en/development-tools/stm32cubemx.html](https://www.st.com/en/development-tools/stm32cubemx.html).
+- `arm-none-eabi-gcc`: download the **Arm GNU Toolchain** Windows installer from [developer.arm.com](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads), or via Chocolatey: `choco install gcc-arm-embedded`. Confirm `arm-none-eabi-gcc --version` works in a fresh PowerShell window.
+- `st-flash` and ST-LINK USB drivers: download the [ST-LINK Server](https://www.st.com/en/development-tools/stsw-link007.html) and [STM32CubeProgrammer](https://www.st.com/en/development-tools/stm32cubeprogrammer.html) from ST. Alternatively, via Chocolatey: `choco install stlink`.
+- `make`: Windows does not ship with `make`. Three good options, pick one:
+  1. **GNU Make for Windows** standalone binary: `choco install make`.
+  2. **MSYS2 / MinGW64**: install MSYS2 from [msys2.org](https://www.msys2.org/), then `pacman -S make`.
+  3. **WSL (Windows Subsystem for Linux)**: gives you a real Linux environment with `apt install gcc-arm-none-eabi make stlink-tools`. The build runs unchanged; flashing requires ST-LINK USB device passthrough from Windows.
+
+**Linux** (Debian/Ubuntu):
+
+```
+sudo apt install gcc-arm-none-eabi stlink-tools make
+```
+
+For other distros: install equivalent packages (often called `arm-none-eabi-gcc-newlib` or similar), plus `stlink` from the [stlink-org repository](https://github.com/stlink-org/stlink).
+
+### Steps
 
 1. Open STM32CubeMX. File > New Project. Pick the NUCLEO-H753ZI board. Accept the default peripherals when prompted.
 
@@ -117,13 +141,17 @@ Steps:
 
 ## Verifying the link with the host
 
-After flashing the counter-pattern build (step 5), with the board plugged into your macOS host:
+After flashing the counter-pattern build (step 5), with the board plugged into the host:
 
 ```
-ls /dev/tty.usbmodem*
 cd ../tools
-source .venv/bin/activate
-python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --duration 30 --csv /tmp/counter.csv
+# activate the venv first (see ../tools/README.md for the OS-specific command)
+
+# substitute the real serial-port name for your OS:
+#   Windows:  COM4
+#   macOS:    /dev/tty.usbmodemXXXXX
+#   Linux:    /dev/ttyACM0
+python -m tinychaos.cli --port <PORT> --duration 30 --csv counter.csv
 ```
 
 You should see a summary showing tens of thousands of packets, zero bad CRCs, zero drops, and a STM32-derived rate of around 10 000 Hz. The CSV will contain a clean 12-bit counter pattern.

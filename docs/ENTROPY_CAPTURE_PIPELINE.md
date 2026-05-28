@@ -98,7 +98,11 @@ Component values, bias calculations, and feedback network sizing are in [docs/ha
 
 ## 7. USB CDC transport design
 
-The STM32 NUCLEO-H753ZI exposes a USB CDC virtual COM port through its on-board ST-LINK. The host sees `/dev/tty.usbmodemXXXX` on macOS. This is the primary transport.
+The STM32 NUCLEO-H753ZI exposes a USB CDC virtual COM port through its on-board ST-LINK. This is the primary transport. The host sees it under different names depending on the OS:
+
+- macOS: `/dev/tty.usbmodemXXXXX`
+- Linux: `/dev/ttyACM0` (or `/dev/ttyUSB0` with some drivers)
+- Windows: `COMx`, where `x` is whatever Windows assigned (visible in Device Manager under Ports)
 
 Key properties of the USB CDC link in this project:
 
@@ -156,9 +160,9 @@ The host implementation lives under `tools/` as a Python package `tinychaos`. Mo
 The CLI is the user-facing surface:
 
 ```
-python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --csv out.csv
-python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --plot
-python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --duration 60 --csv baseline.csv --validation-label baseline
+python -m tinychaos.cli --port <PORT> --csv out.csv
+python -m tinychaos.cli --port <PORT> --plot
+python -m tinychaos.cli --port <PORT> --duration 60 --csv baseline.csv --validation-label baseline
 python -m tinychaos.cli --replay capture.bin --csv replay.csv
 ```
 

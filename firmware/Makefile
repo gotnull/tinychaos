@@ -22,8 +22,11 @@
 
 # ---- On-host self-test target -----------------------------------------
 
-CC ?= cc
+CC ?= gcc
 CFLAGS_TEST ?= -std=c99 -Wall -Wextra -Werror -O2 -ICore/Inc
+# `gcc` is the most portable default: macOS (Xcode CLT aliases gcc to clang),
+# Linux (gcc is native), Windows (MSYS2/MinGW provides gcc). The CC variable
+# can be overridden on the command line: `make CC=clang test`.
 
 TEST_BUILD := build-test
 TEST_BIN := $(TEST_BUILD)/test_protocol_host

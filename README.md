@@ -14,7 +14,8 @@ Every stage of the pipeline is observable. There is no manual hex editing, no AS
 | Host Python package and CLI                | Done. See [tools/](tools/).                        |
 | Host Python test suite (68 tests, pytest)  | Passing.                                           |
 | Host C# .NET 8 solution and CLI            | Done. See [analysis/](analysis/).                  |
-| Host C# Avalonia GUI (cross-platform)      | Done. Live waveform, histogram, stats. macOS, Windows, Linux from one codebase. See [analysis/README.md](analysis/README.md). |
+| Host C# Avalonia GUI (cross-platform)      | Done. Live waveform (60 fps), cumulative histogram, per-channel statistics, samples-replay panel that lists `samples/*.bin` and plays them back on click, and a BUILD & FLASH panel that shells out to the firmware Makefile (Self-test, Build, Flash) with a live streaming console. macOS, Windows, Linux from one codebase. See [analysis/README.md](analysis/README.md). |
+| Tracked sample captures                    | Three synthetic `.bin` files under [samples/](samples/) so the GUI and CLI replay paths can be exercised without hardware. See [samples/README.md](samples/README.md). |
 | Host C# test suite (xUnit)                 | Code written; tests run by anyone with the .NET 8 SDK via `dotnet test`. |
 | Firmware portable protocol module (C)      | Done. Verified byte-identical to Python and C# references. |
 | Firmware on-host self-test                 | Passing. `make -C firmware test`.                  |
@@ -46,18 +47,21 @@ If this is a fresh repo with no remote yet, just `cd` into the directory.
 
 ### 1. Confirm prerequisites for the host stack
 
+Check the Python version:
+
 ```
 python3 --version          # expect 3.10 or newer
-which python3
 ```
 
-If you do not have Python 3.10+, install via Homebrew:
+Install Python 3.10+ if needed:
 
-```
-brew install python
-```
+- macOS: `brew install python`
+- Windows: `winget install Python.Python.3.12` or download from [python.org](https://www.python.org/downloads/windows/) (tick "Add to PATH" in the installer).
+- Linux (Debian/Ubuntu): `sudo apt install python3 python3-venv python3-pip`.
 
 ### 2. Create the Python virtual environment and install the host tools
+
+**macOS / Linux**:
 
 ```
 cd tools
@@ -67,7 +71,19 @@ pip install -U pip
 pip install -e .[dev]
 ```
 
-Optional extras for live plotting:
+**Windows (PowerShell)**:
+
+```
+cd tools
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -U pip
+pip install -e .[dev]
+```
+
+(Use `.venv\Scripts\activate.bat` from cmd.exe instead of PowerShell.)
+
+Optional extras for live plotting (any OS):
 
 ```
 pip install -e .[dev,plot]
@@ -122,21 +138,41 @@ Prerequisites:
 - macOS: `brew install --cask dotnet-sdk`.
 - Linux: follow distro instructions at [learn.microsoft.com/dotnet](https://learn.microsoft.com/dotnet/core/install/linux).
 
-Confirm: `dotnet --version` should print 8.0 or newer.
+Confirm: `dotnet --version` should print 8.0 or newer. If you have a different major (e.g. .NET 10), the solution rolls forward automatically via `analysis/Directory.Build.props`.
 
-Build, test, and smoke-test against the same synthetic capture file you generated for the Python CLI in step 4:
+Build, test, and run all three .NET artefacts:
 
 ```
 cd analysis
 dotnet restore
 dotnet build -c Release
 dotnet test -c Release
-dotnet run --project src/TinyChaos.Host -c Release -- --replay /tmp/tinychaos-demo.bin --csv /tmp/tinychaos-demo-cs.csv --quiet
 ```
 
-Expected: the .NET test suite passes (CRC known-answers, packet round-trips, byte-layout assertions, framer corruption recovery, sequence-gap handling, chunk-size invariance), and the replay CLI produces a Capture summary identical in shape to the Python one and a CSV with the same column schema.
+Run the **CLI** against an existing capture (replay mode, no hardware needed):
 
-See [analysis/README.md](analysis/README.md) for project layout, prerequisites, live-capture flags, and the cross-implementation parity test.
+```
+dotnet run --project src/TinyChaos.Host -c Release -- --replay ../samples/zener_synthetic.bin --csv /tmp/zener.csv --quiet
+```
+
+Run the **Avalonia GUI** (cross-platform: macOS / Windows / Linux):
+
+```
+dotnet run --project src/TinyChaos.Gui -c Release
+```
+
+What you should see in the GUI:
+
+- **CONNECTION** card with a port dropdown, validation-label text box, Refresh, and Connect.
+- **SAMPLES** card listing every `*.bin` file under [samples/](samples/). Click a row and the GUI immediately decodes it through the framer and renders the result.
+- **WAVEFORM** card with the per-channel live trace, 60 fps redraw, 12-bit Y-axis ticks, channel-colour legend.
+- **DISTRIBUTION** card with the cumulative per-channel histogram.
+- **PER-CHANNEL STATISTICS** card with n / min / max / mean / std per channel.
+- **Status footer** with mode (live/replay), packets, bad CRC, drops, resync bytes, STM32-derived rate, host-derived rate, and validation label.
+
+The samples directory is resolved by walking up from the executable looking for a `samples/` folder next to a `.git` entry. You can override with the `TINYCHAOS_SAMPLES` environment variable.
+
+See [analysis/README.md](analysis/README.md) for project layout, live-capture flags, the cross-implementation parity test, and the standalone-app-bundle publish commands.
 
 ### 5. Run the firmware on-host self-test
 
@@ -212,13 +248,24 @@ Detailed steps and the exact CubeMX peripheral configuration are in [firmware/RE
 
 `main_skeleton.c` ships with `ENTROPY_USE_COUNTER_PATTERN = 1`. The firmware emits packets whose samples are a 12-bit counter rather than real ADC data. This isolates protocol and transport from analogue questions.
 
-With the board plugged in:
+#### Finding the serial port name
+
+The same NUCLEO appears under different names depending on the host OS. All examples below use a placeholder; substitute the real port path before you run.
+
+- **macOS**: `ls /dev/tty.usbmodem*` (typical: `/dev/tty.usbmodemXXXXX`).
+- **Linux**: `ls /dev/ttyACM* /dev/ttyUSB*` (typical: `/dev/ttyACM0`).
+- **Windows**: open Device Manager and look under "Ports (COM & LPT)" for "STMicroelectronics STLink Virtual COM Port", or run `Get-CimInstance Win32_SerialPort | Select-Object DeviceID, Description` in PowerShell. Typical names: `COM3`, `COM4`, etc. Pass the bare name without the `\\.\` prefix (the Python and C# tools handle it).
+
+#### Run the live-capture smoke test
+
+With the board plugged in, from `tools/` with the virtual environment active:
 
 ```
-ls /dev/tty.usbmodem*
-cd tools
-source .venv/bin/activate
-python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --duration 30 --csv /tmp/counter.csv
+# macOS / Linux
+python -m tinychaos.cli --port /dev/tty.usbmodemXXXXX --duration 30 --csv /tmp/counter.csv
+
+# Windows (PowerShell)
+python -m tinychaos.cli --port COM4 --duration 30 --csv $env:TEMP\counter.csv
 ```
 
 Expected:
@@ -244,29 +291,31 @@ Rebuild, flash, and capture again. The CSV will now contain ADC samples instead 
 
 ### 12. Run the validation comparison set
 
-Five short captures, each with a different physical wiring, isolate different noise sources. Each gets its own CSV file labelled via `--validation-label`:
+Five short captures, each with a different physical wiring, isolate different noise sources. Each gets its own CSV file labelled via `--validation-label`.
+
+Substitute `<PORT>` with your real serial-port name (see step 10).
 
 ```
 mkdir -p captures
 
 # A. Shorted input. Wire the ADC input directly to the mid-rail divider tap.
-python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --duration 60 \
+python -m tinychaos.cli --port <PORT> --duration 60 \
     --csv captures/shorted.csv --validation-label shorted
 
 # B. Baseline divider. The default wiring of the dedicated reference channel.
-python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --duration 60 \
+python -m tinychaos.cli --port <PORT> --duration 60 \
     --csv captures/divider.csv --validation-label divider
 
 # C. Floating input. Leave the zener channel's ADC wire unattached.
-python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --duration 60 \
+python -m tinychaos.cli --port <PORT> --duration 60 \
     --csv captures/floating.csv --validation-label floating
 
 # D. Zener, wall PSU.
-python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --duration 60 \
+python -m tinychaos.cli --port <PORT> --duration 60 \
     --csv captures/zener_psu.csv --validation-label zener
 
 # E. Zener, battery bias.
-python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --duration 60 \
+python -m tinychaos.cli --port <PORT> --duration 60 \
     --csv captures/zener_battery.csv --validation-label battery
 ```
 
@@ -277,7 +326,7 @@ Expected signatures and what each isolates are described in [docs/ENTROPY_CAPTUR
 If you installed the `plot` extra:
 
 ```
-python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --plot
+python -m tinychaos.cli --port <PORT> --plot
 ```
 
 A matplotlib window opens with three panels: rolling waveform per channel, cumulative histogram per channel, and a stats text panel. If matplotlib is not installed the CLI prints a friendly diagnostic and continues without plotting.
@@ -285,7 +334,7 @@ A matplotlib window opens with three panels: rolling waveform per channel, cumul
 ### 14. (Optional) Offline FFT
 
 ```
-python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --duration 30 --fft --csv /tmp/zener.csv
+python -m tinychaos.cli --port <PORT> --duration 30 --fft --csv ./zener.csv
 ```
 
 The CLI keeps up to 65 536 samples per channel in memory during capture. At exit it computes a one-sided PSD via `tinychaos.analysis.fft_psd`, prints the peak frequency and PSD value per channel, and, if matplotlib is installed, opens a plot. Verified end-to-end against a known 1 kHz sine: the CLI reports the peak within one FFT bin.
@@ -312,14 +361,25 @@ tinychaos/
     pyproject.toml
     README.md                     tools-local quickstart
     src/tinychaos/                package source
-    tests/                        pytest suite (54 tests)
+    tests/                        pytest suite (68 tests)
   firmware/                       STM32 firmware
     Makefile                      host self-test plus CubeMX-Makefile passthrough
     README.md                     CubeMX generation and integration steps
     Core/Inc/                     entropy_config.h, entropy_protocol.h, usb_stream.h, serial_stream.h
     Core/Src/                     entropy_protocol.c, usb_stream.c, serial_stream.c, main_skeleton.c
     test/                         test_protocol_host.c
-  analysis/                       reserved for future offline analysis scripts
+  analysis/                       .NET 8 host: Protocol library, CLI (tinychaos-host), Avalonia GUI (tinychaos-gui), xUnit tests
+    TinyChaos.sln
+    Directory.Build.props         RollForward=LatestMajor so apps run on .NET 9 or 10 when 8 runtime is absent
+    src/TinyChaos.Protocol/       wire-format library, shared by CLI and GUI
+    src/TinyChaos.Host/           console CLI
+    src/TinyChaos.Gui/            Avalonia desktop GUI: connection card, samples card, waveform, histogram, stats
+    tests/TinyChaos.Tests/        xUnit suite (38 tests)
+  samples/                        tracked synthetic .bin captures for replay testing
+    README.md                     description of each sample
+    zener_synthetic.bin           Gaussian noise mimicking real avalanche noise
+    sine_1khz.bin                 1 kHz sine sanity-check signal
+    floating_50hz.bin             50 Hz mains-pickup simulation
 ```
 
 ## Quick reference: every command, in one place
@@ -352,10 +412,11 @@ python -c "from tinychaos.protocol import encode_packet; open('/tmp/x.bin','wb')
 python -m tinychaos.cli --replay /tmp/x.bin --csv /tmp/x.csv --quiet
 
 # Real hardware capture (once firmware is flashed)
-python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --duration 30 --csv /tmp/run.csv
+#   Substitute <PORT>:  COM4 (Windows), /dev/tty.usbmodemXXXXX (macOS), /dev/ttyACM0 (Linux)
+python -m tinychaos.cli --port <PORT> --duration 30 --csv ./run.csv
 
 # Validation run with a label
-python -m tinychaos.cli --port /dev/tty.usbmodemXXXX --duration 60 --csv captures/zener.csv --validation-label zener
+python -m tinychaos.cli --port <PORT> --duration 60 --csv captures/zener.csv --validation-label zener
 ```
 
 ## Safety, in one paragraph

@@ -12,10 +12,11 @@ Pick whichever host matches your operating system and preferred toolchain. The p
 | Concern                              | Python                                     | C# CLI                                   | C# GUI (Avalonia)                            |
 |--------------------------------------|--------------------------------------------|------------------------------------------|----------------------------------------------|
 | Setup overhead                       | `python -m venv` + `pip install`           | install .NET 8 SDK, then `dotnet build`  | install .NET 8 SDK, then `dotnet run --project src/TinyChaos.Gui` |
-| Live plotting                        | Yes (matplotlib, optional `plot` extra)    | n/a (no GUI)                             | Yes (custom Avalonia DrawingContext canvases, 30 Hz waveform, 10 Hz histogram) |
+| Live plotting                        | Yes (matplotlib, optional `plot` extra)    | n/a (no GUI)                             | Yes (custom Avalonia DrawingContext canvases, 60 fps waveform, 10 Hz histogram) |
+| Replay from `.bin` capture file      | Yes (`--replay` flag)                      | Yes (`--replay` flag)                    | Yes (SAMPLES card lists [samples/](../samples/), click to replay) |
 | FFT and offline analysis             | Yes (`tinychaos.analysis`)                 | Not in v1                                | Not in v1                                    |
 | CSV export                           | Yes                                        | Yes                                      | Not in v1 (CLI is the canonical CSV producer)|
-| Raw binary export and replay         | Yes                                        | Yes                                      | Not in v1 (use CLI for replay)               |
+| Raw binary export                    | Yes                                        | Yes                                      | Not in v1                                    |
 | Sequence-gap and CRC error counting  | Yes                                        | Yes                                      | Yes                                          |
 | Sample-rate dual estimation          | Yes                                        | Yes                                      | Yes                                          |
 | Test framework                       | pytest, Hypothesis                         | xUnit                                    | (shares xUnit via shared `TinyChaos.Protocol` and `TinyChaos.Host.Stats`) |

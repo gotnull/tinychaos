@@ -81,8 +81,10 @@ Usage:
   tinychaos-host --replay <file> [options]
 
 Source (exactly one required):
-  --port <name>             Serial port, e.g. COM3 on Windows or
-                            /dev/tty.usbmodemXXXX on macOS / Linux.
+  --port <name>             Serial port. Typical names per OS:
+                              Windows: COM3, COM4, ...   (Device Manager -> Ports)
+                              macOS:   /dev/tty.usbmodemXXXXX
+                              Linux:   /dev/ttyACM0 (or /dev/ttyUSB0)
   --replay <file>           Replay a captured raw binary file.
 
 Options:
