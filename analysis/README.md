@@ -2,7 +2,12 @@
 
 .NET 8 host-side tooling for the tinychaos entropy capture pipeline. Mirrors the Python implementation in [`../tools/`](../tools/) function-for-function and shares the same wire protocol byte-for-byte. Runs on Windows, macOS, and Linux.
 
-Use this host when you prefer .NET tooling or when you are running on Windows. Use [`../tools/`](../tools/) (Python) when you prefer scientific-Python tooling on macOS or Linux.
+Two front-ends ship in this solution:
+
+- **`TinyChaos.Host`** is the console CLI. Same flags as the Python CLI, no graphics.
+- **`TinyChaos.Gui`** is an Avalonia desktop GUI. Live waveform, cumulative histogram, per-channel stats panel, port picker, validation label. Renders identically on macOS, Windows, and Linux from a single codebase.
+
+Use the CLI for scripted captures and CI. Use the GUI for interactive exploration.
 
 ## Layout
 
@@ -31,6 +36,18 @@ analysis/
       Export/CsvExporter.cs
       Export/RawBinaryExporter.cs
       TinyChaos.Host.csproj
+    TinyChaos.Gui/                 Avalonia desktop GUI, depends on Protocol and Host (for shared stats)
+      Program.cs
+      App.axaml + App.axaml.cs
+      MainWindow.axaml + MainWindow.axaml.cs
+      MainWindowViewModel.cs       MVVM with CommunityToolkit.Mvvm
+      WaveformModel.cs             per-channel ring buffer
+      HistogramModel.cs            per-channel cumulative histogram
+      CaptureService.cs            background serial reader, feeds the Framer
+      WaveformView.cs              custom Avalonia Control with DrawingContext Render
+      HistogramView.cs             custom Avalonia Control with DrawingContext Render
+      app.manifest
+      TinyChaos.Gui.csproj
   tests/
     TinyChaos.Tests/               xUnit test project
       Crc16Tests.cs
@@ -120,9 +137,36 @@ If you change the wire format, change all three. The cross-implementation parity
 
 For the full protocol spec see [../docs/ENTROPY_CAPTURE_PIPELINE.md](../docs/ENTROPY_CAPTURE_PIPELINE.md) section 8.
 
+## Running the Avalonia GUI
+
+```
+cd analysis
+dotnet run --project src/TinyChaos.Gui -c Release
+```
+
+The window opens with a Port dropdown (populated from `SerialPort.GetPortNames()`), a Refresh button, a Connect / Disconnect toggle, and a Label text box (written into the validation_label CSV column if CSV export is added later). Three stacked panels show the live waveform per channel (top, 2/3 of the height), the cumulative histogram (middle), and the per-channel statistics (bottom). A status bar runs along the bottom of the window with packets, bad CRC, drops, resync bytes, and the dual sample-rate estimate.
+
+Both views are custom Avalonia Controls that override `Render`. They poll their backing models on a 30 Hz (waveform) and 10 Hz (histogram) dispatcher timer, decoupling render rate from packet rate. The capture service reads bytes on a background `Task.Run` thread, feeds them through `TinyChaos.Protocol.Framer`, and appends decoded samples into thread-safe `WaveformModel` and `HistogramModel` instances under a per-model lock.
+
+### Publishing standalone app bundles
+
+```
+# macOS Apple Silicon
+dotnet publish src/TinyChaos.Gui -c Release -r osx-arm64 --self-contained
+# macOS Intel
+dotnet publish src/TinyChaos.Gui -c Release -r osx-x64 --self-contained
+# Windows x64
+dotnet publish src/TinyChaos.Gui -c Release -r win-x64 --self-contained
+# Linux x64
+dotnet publish src/TinyChaos.Gui -c Release -r linux-x64 --self-contained
+```
+
+The resulting `tinychaos-gui` binary is in `src/TinyChaos.Gui/bin/Release/net8.0/<rid>/publish/`. Self-contained builds bundle the .NET runtime so no .NET install is required on the target machine.
+
 ## Out of scope for now
 
-- Live GUI plotting. The Python host has a matplotlib live-plot panel; the C# host is CLI only for v1. A WPF or Avalonia GUI sits behind this and can be added later. The protocol library is GUI-agnostic, so the work is purely a presentation layer.
 - FFT and Z-score analysis in the C# host. The Python `tinychaos.analysis` module covers this and produces CSVs that any tool (including the C# host) can read.
+- CSV export from the GUI. The CLI is the canonical CSV producer; the GUI is for live monitoring. Adding CSV export is straightforward: instantiate `TinyChaos.Host.Export.CsvExporter` in `CaptureService` and call `WritePacket` on each `PacketReceivedEvent`.
+- Replay-from-file mode in the GUI. Use the CLI with `--replay` for that.
 
 These are deliberate scope cuts to keep the v1 .NET surface small and reliable. Add them when you need them; the protocol and stats layers will not need to change.

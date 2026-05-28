@@ -14,6 +14,7 @@ Every stage of the pipeline is observable. There is no manual hex editing, no AS
 | Host Python package and CLI                | Done. See [tools/](tools/).                        |
 | Host Python test suite (68 tests, pytest)  | Passing.                                           |
 | Host C# .NET 8 solution and CLI            | Done. See [analysis/](analysis/).                  |
+| Host C# Avalonia GUI (cross-platform)      | Done. Live waveform, histogram, stats. macOS, Windows, Linux from one codebase. See [analysis/README.md](analysis/README.md). |
 | Host C# test suite (xUnit)                 | Code written; tests run by anyone with the .NET 8 SDK via `dotnet test`. |
 | Firmware portable protocol module (C)      | Done. Verified byte-identical to Python and C# references. |
 | Firmware on-host self-test                 | Passing. `make -C firmware test`.                  |
@@ -333,6 +334,9 @@ pytest
 cd ../analysis
 dotnet restore && dotnet build -c Release
 dotnet test -c Release
+
+# C# Avalonia GUI (cross-platform: macOS, Windows, Linux)
+dotnet run --project src/TinyChaos.Gui -c Release
 
 # Firmware on-host self-test
 cd ../firmware

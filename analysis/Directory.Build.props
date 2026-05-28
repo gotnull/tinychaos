@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <!--
+      All projects in this solution target net8.0 (LTS, Windows-contributor
+      friendly). Some development machines (notably Homebrew installs on
+      macOS) ship a newer .NET runtime without the 8.0 runtime present.
+      RollForward=LatestMajor lets the apps and the test host run on a
+      newer runtime when 8.x is not installed.
+    -->
+    <RollForward>LatestMajor</RollForward>
+  </PropertyGroup>
+</Project>

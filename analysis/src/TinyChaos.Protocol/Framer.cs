@@ -48,9 +48,14 @@ public sealed class Framer
     /// </summary>
     public IEnumerable<IFrameEvent> Feed(ReadOnlyMemory<byte> chunk)
     {
-        foreach (byte b in chunk.Span)
+        // Enqueue without holding a Span in a local. Iterator methods in
+        // C# 12 cannot have ref-struct locals (the iterator state machine
+        // would need to persist them across yield boundaries). Accessing
+        // `chunk.Span[i]` returns a byte for each index without creating a
+        // Span local.
+        for (int i = 0; i < chunk.Length; i++)
         {
-            _pending.Enqueue(b);
+            _pending.Enqueue(chunk.Span[i]);
         }
 
         while (true)

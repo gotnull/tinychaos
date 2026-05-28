@@ -1,0 +1,65 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:TinyChaos.Gui"
+        xmlns:local="using:TinyChaos.Gui"
+        mc:Ignorable="d"
+        x:Class="TinyChaos.Gui.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="tinychaos"
+        Width="1100" Height="780"
+        MinWidth="800" MinHeight="600">
+    <Grid RowDefinitions="Auto,*,Auto" Margin="10">
+
+        <!-- Top control bar -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" Margin="0,0,0,8">
+            <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,6,0">Port:</TextBlock>
+            <ComboBox Grid.Column="1"
+                      ItemsSource="{Binding AvailablePorts}"
+                      SelectedItem="{Binding SelectedPort, Mode=TwoWay}"
+                      HorizontalAlignment="Stretch"
+                      MinWidth="240" />
+            <Button Grid.Column="2" Margin="6,0,0,0"
+                    Command="{Binding RefreshPortsCommand}"
+                    Content="Refresh" />
+            <Button Grid.Column="3" Margin="6,0,0,0"
+                    Command="{Binding ToggleConnectionCommand}"
+                    Content="{Binding ConnectButtonLabel}" />
+            <TextBlock Grid.Column="4" Margin="16,0,6,0" VerticalAlignment="Center">Label:</TextBlock>
+            <TextBox Grid.Column="5"
+                     Text="{Binding ValidationLabel, Mode=TwoWay}"
+                     Width="140"
+                     Watermark="zener, divider, ..." />
+        </Grid>
+
+        <!-- Charts and stats -->
+        <Grid Grid.Row="1" RowDefinitions="2*,1.4*,Auto">
+
+            <Border Grid.Row="0" BorderBrush="#404040" BorderThickness="1" Margin="0,0,0,4"
+                    Background="Black">
+                <local:WaveformView Model="{Binding Waveform}" />
+            </Border>
+
+            <Border Grid.Row="1" BorderBrush="#404040" BorderThickness="1" Margin="0,4,0,4"
+                    Background="Black">
+                <local:HistogramView Model="{Binding Histogram}" />
+            </Border>
+
+            <Border Grid.Row="2" Background="#101010" Padding="8" Margin="0,4,0,0">
+                <TextBlock Text="{Binding StatsText}"
+                           Foreground="#E0E0E0"
+                           FontFamily="Menlo,Consolas,Courier New,monospace"
+                           FontSize="12" />
+            </Border>
+        </Grid>
+
+        <!-- Status bar -->
+        <Border Grid.Row="2" Margin="0,8,0,0" Padding="6" Background="#202020">
+            <TextBlock Text="{Binding StatusLine}"
+                       Foreground="#B0B0B0"
+                       FontFamily="Menlo,Consolas,Courier New,monospace"
+                       FontSize="12" />
+        </Border>
+    </Grid>
+</Window>

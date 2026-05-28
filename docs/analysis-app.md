@@ -9,17 +9,17 @@ Pick whichever host matches your operating system and preferred toolchain. The p
 
 ## Choosing between them
 
-| Concern                              | Python                                     | C#                                       |
-|--------------------------------------|--------------------------------------------|------------------------------------------|
-| Setup overhead                       | `python -m venv` + `pip install`           | install .NET 8 SDK, then `dotnet build` |
-| Live plotting                        | Yes (matplotlib, optional `plot` extra)    | Not in v1                                |
-| FFT and offline analysis             | Yes (`tinychaos.analysis`)                 | Not in v1                                |
-| CSV export                           | Yes                                        | Yes                                      |
-| Raw binary export and replay         | Yes                                        | Yes                                      |
-| Sequence-gap and CRC error counting  | Yes                                        | Yes                                      |
-| Sample-rate dual estimation          | Yes                                        | Yes                                      |
-| Test framework                       | pytest, Hypothesis                         | xUnit                                    |
-| Cross-platform                       | macOS, Linux primary                       | Windows, macOS, Linux                    |
+| Concern                              | Python                                     | C# CLI                                   | C# GUI (Avalonia)                            |
+|--------------------------------------|--------------------------------------------|------------------------------------------|----------------------------------------------|
+| Setup overhead                       | `python -m venv` + `pip install`           | install .NET 8 SDK, then `dotnet build`  | install .NET 8 SDK, then `dotnet run --project src/TinyChaos.Gui` |
+| Live plotting                        | Yes (matplotlib, optional `plot` extra)    | n/a (no GUI)                             | Yes (custom Avalonia DrawingContext canvases, 30 Hz waveform, 10 Hz histogram) |
+| FFT and offline analysis             | Yes (`tinychaos.analysis`)                 | Not in v1                                | Not in v1                                    |
+| CSV export                           | Yes                                        | Yes                                      | Not in v1 (CLI is the canonical CSV producer)|
+| Raw binary export and replay         | Yes                                        | Yes                                      | Not in v1 (use CLI for replay)               |
+| Sequence-gap and CRC error counting  | Yes                                        | Yes                                      | Yes                                          |
+| Sample-rate dual estimation          | Yes                                        | Yes                                      | Yes                                          |
+| Test framework                       | pytest, Hypothesis                         | xUnit                                    | (shares xUnit via shared `TinyChaos.Protocol` and `TinyChaos.Host.Stats`) |
+| Cross-platform                       | macOS, Linux primary                       | Windows, macOS, Linux                    | Windows, macOS, Linux from a single codebase |
 
 ## Wire-format authority
 

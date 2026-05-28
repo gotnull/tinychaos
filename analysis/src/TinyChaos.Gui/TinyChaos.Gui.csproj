@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>12</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>TinyChaos.Gui</RootNamespace>
+    <AssemblyName>tinychaos-gui</AssemblyName>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.2.1" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.2.1" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.1" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TinyChaos.Protocol\TinyChaos.Protocol.csproj" />
+    <ProjectReference Include="..\TinyChaos.Host\TinyChaos.Host.csproj" />
+  </ItemGroup>
+
+</Project>
