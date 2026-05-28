@@ -2,6 +2,8 @@
 
 A hardware random number generator that captures avalanche-breakdown noise from a reverse-biased zener diode, digitises it on an STM32 NUCLEO-H753ZI, streams framed binary packets to a host, and analyses them. Two host implementations ship in this repo, sharing the same wire protocol byte-for-byte: a Python toolchain (preferred on macOS / Linux) and a .NET 8 C# toolchain (preferred on Windows, also runs cross-platform).
 
+> **Already have STM32 firmware streaming raw ADC samples?** You don't need to start over. Read [docs/FIRMWARE_INTEGRATION.md](docs/FIRMWARE_INTEGRATION.md). It walks you through dropping three files into your existing CubeMX project and wrapping each DMA-callback send with one function call. That gives you the entire host pipeline (GUI, live waveform, recording, replay, CRC checks, drop detection) without throwing away the firmware you already wrote.
+
 Every stage of the pipeline is observable. There is no manual hex editing, no ASCII UART dump format, no opaque transport. The host parser detects CRC failures, counts dropped packets, recovers from corruption, and reports two independent sample-rate estimates.
 
 ## Status
@@ -16,6 +18,7 @@ Every stage of the pipeline is observable. There is no manual hex editing, no AS
 | Host C# .NET 8 solution and CLI            | Done. See [analysis/](analysis/).                  |
 | Host C# Avalonia GUI (cross-platform)      | Done. Tabbed layout: Live capture (60 fps waveform, cumulative histogram, per-channel statistics), Samples (replay any `.bin`), Firmware (build + flash via the firmware Makefile with a live streaming console). Persistent connection toolbar with a Record / Stop toggle that writes the live byte stream to a timestamped `.bin` under `samples/`. macOS, Windows, Linux from one codebase. See [analysis/README.md](analysis/README.md). |
 | Tracked sample captures                    | Three synthetic `.bin` files under [samples/](samples/) so the GUI and CLI replay paths can be exercised without hardware. See [samples/README.md](samples/README.md). |
+| Bring-existing-firmware integration guide  | Done. [docs/FIRMWARE_INTEGRATION.md](docs/FIRMWARE_INTEGRATION.md) explains how someone with a working STM32 firmware (CubeMX project, ADC + DMA + USB CDC already streaming raw bytes) drops in our protocol module and gets the full host pipeline. |
 | Host C# test suite (xUnit)                 | Code written; tests run by anyone with the .NET 8 SDK via `dotnet test`. |
 | Firmware portable protocol module (C)      | Done. Verified byte-identical to Python and C# references. |
 | Firmware on-host self-test                 | Passing. `make -C firmware test`.                  |
@@ -351,6 +354,7 @@ tinychaos/
     element14-bom.csv             upload to element14 BOM tool to populate the cart
   docs/
     ENTROPY_CAPTURE_PIPELINE.md   authoritative pipeline reference
+    FIRMWARE_INTEGRATION.md       integration guide for bringing existing STM32 firmware onto our wire format
     architecture.md               two-zone breadboard layout, design claims
     hardware-design.md            schematic, values, bias calcs
     filtering-and-power.md        RC corners, decoupling, battery isolation

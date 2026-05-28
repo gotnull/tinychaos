@@ -1,24 +1,30 @@
 # tinychaos firmware
 
-STM32 NUCLEO-H753ZI firmware for the entropy capture pipeline. Streams framed binary packets (see [../docs/ENTROPY_CAPTURE_PIPELINE.md](../docs/ENTROPY_CAPTURE_PIPELINE.md) section 8) to a macOS host over USB CDC or, for early bring-up, USART3 at 921600 baud.
+STM32 NUCLEO-H753ZI firmware for the entropy capture pipeline. Streams framed binary packets (see [../docs/ENTROPY_CAPTURE_PIPELINE.md](../docs/ENTROPY_CAPTURE_PIPELINE.md) section 8) to a host over USB CDC or, for early bring-up, USART3 at 921600 baud.
+
+> **Already have a working STM32 firmware that streams raw ADC samples?** You almost certainly do not want to start over. Read [../docs/FIRMWARE_INTEGRATION.md](../docs/FIRMWARE_INTEGRATION.md). It explains exactly which three files to copy from this directory into your existing CubeMX project and the one function call you need to add inside each DMA callback. This `firmware/` directory is mostly scaffolding for the from-scratch path; the integration guide is the practical bring-existing-firmware path.
 
 ## What is in this folder today
+
+Honest inventory. Most of this is portable scaffolding, not a flashable binary.
 
 ```
 firmware/
   Makefile                          on-host test + CubeMX-Makefile passthrough
-  Core/Inc/entropy_config.h         protocol constants and capture parameters
-  Core/Inc/entropy_protocol.h       portable C protocol module header
-  Core/Src/entropy_protocol.c       portable C protocol module implementation
-  Core/Inc/usb_stream.h             USB CDC transmit ring buffer (HAL-dep)
-  Core/Src/usb_stream.c             USB CDC implementation
-  Core/Inc/serial_stream.h          USART3 DMA TX fallback (HAL-dep)
-  Core/Src/serial_stream.c          USART3 DMA TX implementation
-  Core/Src/main_skeleton.c          integration reference for main.c
-  test/test_protocol_host.c         on-host self-test for entropy_protocol
+  Core/Inc/entropy_config.h         protocol constants and capture parameters       (portable C)
+  Core/Inc/entropy_protocol.h       portable C protocol module header               (portable C)
+  Core/Src/entropy_protocol.c       portable C protocol module implementation       (portable C, builds host-side)
+  Core/Inc/usb_stream.h             USB CDC transmit ring buffer (HAL-dep)          (needs CubeMX USB middleware)
+  Core/Src/usb_stream.c             USB CDC implementation                          (needs CubeMX USB middleware)
+  Core/Inc/serial_stream.h          USART3 DMA TX fallback (HAL-dep)                (needs CubeMX HAL UART)
+  Core/Src/serial_stream.c          USART3 DMA TX implementation                    (needs CubeMX HAL UART)
+  Core/Src/main_skeleton.c          integration reference for main.c                (documentation; not meant to compile alone)
+  test/test_protocol_host.c         on-host self-test for entropy_protocol          (builds with host gcc/clang)
 ```
 
-The CubeMX-generated files (tinychaos.ioc, the CubeMX-generated Makefile, the linker script, the USB middleware, etc.) are NOT in the repo yet. The instructions below tell you how to generate them.
+Marked **portable C** above means the file compiles cleanly with both `arm-none-eabi-gcc` (for the STM32) and host `gcc` / `clang` (for the self-test). Those are the three files you copy into an existing firmware project per [../docs/FIRMWARE_INTEGRATION.md](../docs/FIRMWARE_INTEGRATION.md).
+
+The CubeMX-generated files (`tinychaos.ioc`, the CubeMX-generated Makefile, the linker script, the USB middleware, `adc_capture.c`, etc.) are **not** in the repo. The instructions below tell you how to generate them if you are starting from scratch.
 
 ## Quickest path: on-host self-test
 
