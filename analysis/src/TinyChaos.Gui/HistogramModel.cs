@@ -43,4 +43,16 @@ public sealed class HistogramModel
             return copy;
         }
     }
+
+    /// <summary>Drop all counts on every channel.</summary>
+    public void Clear()
+    {
+        lock (_lock)
+        {
+            for (int ch = 0; ch < ChannelCount; ch++)
+            {
+                Array.Clear(_counts[ch], 0, _counts[ch].Length);
+            }
+        }
+    }
 }

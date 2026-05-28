@@ -62,4 +62,18 @@ public sealed class WaveformModel
             return result;
         }
     }
+
+    /// <summary>Drop all samples on every channel.</summary>
+    public void Clear()
+    {
+        lock (_lock)
+        {
+            for (int ch = 0; ch < ChannelCount; ch++)
+            {
+                Array.Clear(_buffers[ch], 0, _buffers[ch].Length);
+                _heads[ch] = 0;
+                _counts[ch] = 0;
+            }
+        }
+    }
 }

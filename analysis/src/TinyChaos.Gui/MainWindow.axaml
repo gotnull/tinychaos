@@ -8,58 +8,232 @@
         x:Class="TinyChaos.Gui.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="tinychaos"
-        Width="1100" Height="780"
-        MinWidth="800" MinHeight="600">
-    <Grid RowDefinitions="Auto,*,Auto" Margin="10">
+        Width="1180" Height="820"
+        MinWidth="960" MinHeight="640"
+        Background="{DynamicResource Surface2}"
+        FontFamily="-apple-system,system-ui,Segoe UI,Helvetica Neue,Arial,sans-serif"
+        FontSize="13">
 
-        <!-- Top control bar -->
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" Margin="0,0,0,8">
-            <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,6,0">Port:</TextBlock>
-            <ComboBox Grid.Column="1"
-                      ItemsSource="{Binding AvailablePorts}"
-                      SelectedItem="{Binding SelectedPort, Mode=TwoWay}"
-                      HorizontalAlignment="Stretch"
-                      MinWidth="240" />
-            <Button Grid.Column="2" Margin="6,0,0,0"
-                    Command="{Binding RefreshPortsCommand}"
-                    Content="Refresh" />
-            <Button Grid.Column="3" Margin="6,0,0,0"
-                    Command="{Binding ToggleConnectionCommand}"
-                    Content="{Binding ConnectButtonLabel}" />
-            <TextBlock Grid.Column="4" Margin="16,0,6,0" VerticalAlignment="Center">Label:</TextBlock>
-            <TextBox Grid.Column="5"
-                     Text="{Binding ValidationLabel, Mode=TwoWay}"
-                     Width="140"
-                     Watermark="zener, divider, ..." />
+    <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="20">
+
+        <!-- ========================================= -->
+        <!-- Connection card                            -->
+        <!-- ========================================= -->
+        <Border Grid.Row="0" Classes="card" Margin="0,0,0,12">
+            <Grid RowDefinitions="Auto,12,Auto">
+
+                <!-- Card title row -->
+                <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" Classes="h1" Text="CONNECTION" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                        <Ellipse Width="8" Height="8"
+                                 Fill="{Binding StatusDotBrush}"
+                                 VerticalAlignment="Center" />
+                        <TextBlock Classes="caption"
+                                   Text="{Binding ConnectionStatusText}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- Form row: Port, Label, Refresh, Connect -->
+                <Grid Grid.Row="2"
+                      ColumnDefinitions="Auto,*,20,Auto,220,Auto,Auto"
+                      RowDefinitions="Auto">
+                    <TextBlock Grid.Column="0" Classes="formLabel" Text="Port" />
+                    <ComboBox Grid.Column="1"
+                              ItemsSource="{Binding AvailablePorts}"
+                              SelectedItem="{Binding SelectedPort, Mode=TwoWay}"
+                              PlaceholderText="select a serial port"
+                              HorizontalAlignment="Stretch" />
+
+                    <TextBlock Grid.Column="3" Classes="formLabel" Text="Label" />
+                    <TextBox    Grid.Column="4"
+                                Text="{Binding ValidationLabel, Mode=TwoWay}"
+                                Watermark="zener, divider, floating, ..." />
+
+                    <Button Grid.Column="5" Classes="secondary"
+                            Command="{Binding RefreshPortsCommand}"
+                            Content="Refresh"
+                            Margin="20,0,0,0" />
+                    <Button Grid.Column="6" Classes="primary"
+                            Command="{Binding ToggleConnectionCommand}"
+                            Content="{Binding ConnectButtonLabel}"
+                            Margin="10,0,0,0" />
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- ========================================= -->
+        <!-- Samples card                               -->
+        <!-- ========================================= -->
+        <Border Grid.Row="1" Classes="card" Margin="0,0,0,12">
+            <Grid RowDefinitions="Auto,10,Auto" ColumnDefinitions="*">
+                <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <TextBlock Classes="h1" Text="SAMPLES" />
+                        <TextBlock Classes="caption" Text="{Binding SamplesStatusText}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                        <Button Classes="secondary"
+                                Command="{Binding RefreshSamplesCommand}"
+                                Content="Refresh" />
+                        <Button Classes="secondary"
+                                Command="{Binding OpenSamplesFolderCommand}"
+                                Content="Open folder" />
+                    </StackPanel>
+                </Grid>
+
+                <ListBox Grid.Row="2"
+                         ItemsSource="{Binding Samples}"
+                         SelectedItem="{Binding SelectedSample, Mode=TwoWay}"
+                         MaxHeight="160"
+                         Background="{DynamicResource Surface0}"
+                         BorderBrush="{DynamicResource SurfaceBorderSoft}"
+                         BorderThickness="1"
+                         CornerRadius="4"
+                         Padding="2">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="vm:SampleEntry">
+                            <Grid ColumnDefinitions="*,Auto,140" Margin="6,4">
+                                <TextBlock Grid.Column="0"
+                                           Text="{Binding FileName}"
+                                           Foreground="{DynamicResource TextPrimary}"
+                                           FontSize="12"
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding SizeText}"
+                                           Foreground="{DynamicResource TextSecondary}"
+                                           FontFamily="Menlo,Consolas,monospace"
+                                           FontSize="11"
+                                           Margin="12,0"
+                                           VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2"
+                                           Text="{Binding ModifiedText}"
+                                           Foreground="{DynamicResource TextSecondary}"
+                                           FontSize="11"
+                                           HorizontalAlignment="Right"
+                                           VerticalAlignment="Center" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+        </Border>
+
+        <!-- ========================================= -->
+        <!-- Charts column                              -->
+        <!-- ========================================= -->
+        <Grid Grid.Row="2" RowDefinitions="*,12,*,12,Auto">
+
+            <!-- Waveform card -->
+            <Border Grid.Row="0" Classes="card">
+                <Grid RowDefinitions="Auto,12,*">
+                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Classes="h1" Text="WAVEFORM" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Border Classes="swatch" Background="{DynamicResource Channel0Brush}" />
+                                <TextBlock Classes="caption" Text="channel 0 (zener)" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Border Classes="swatch" Background="{DynamicResource Channel1Brush}" />
+                                <TextBlock Classes="caption" Text="channel 1 (baseline)" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                    <Border Grid.Row="2" Classes="chartHolder">
+                        <local:WaveformView Model="{Binding Waveform}" />
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- Histogram card -->
+            <Border Grid.Row="2" Classes="card">
+                <Grid RowDefinitions="Auto,12,*">
+                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Classes="h1" Text="DISTRIBUTION" />
+                        <TextBlock Grid.Column="1" Classes="caption" Text="ADC code: 0 to 4095 (12-bit)" />
+                    </Grid>
+                    <Border Grid.Row="2" Classes="chartHolder">
+                        <local:HistogramView Model="{Binding Histogram}" />
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- Statistics card -->
+            <Border Grid.Row="4" Classes="card">
+                <Grid RowDefinitions="Auto,8,Auto">
+                    <TextBlock Grid.Row="0" Classes="h1" Text="PER-CHANNEL STATISTICS" />
+                    <TextBlock Grid.Row="2" Classes="mono"
+                               Text="{Binding StatsText}" />
+                </Grid>
+            </Border>
         </Grid>
 
-        <!-- Charts and stats -->
-        <Grid Grid.Row="1" RowDefinitions="2*,1.4*,Auto">
+        <!-- ========================================= -->
+        <!-- Status footer                              -->
+        <!-- ========================================= -->
+        <Border Grid.Row="3" Classes="card" Margin="0,12,0,0" Padding="14,10">
+            <StackPanel Orientation="Horizontal" Spacing="12">
 
-            <Border Grid.Row="0" BorderBrush="#404040" BorderThickness="1" Margin="0,0,0,4"
-                    Background="Black">
-                <local:WaveformView Model="{Binding Waveform}" />
-            </Border>
+                <Border Classes="statusPill">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Classes="mono secondary" Text="mode" />
+                        <TextBlock Classes="mono" Text="{Binding ModeText}" />
+                    </StackPanel>
+                </Border>
 
-            <Border Grid.Row="1" BorderBrush="#404040" BorderThickness="1" Margin="0,4,0,4"
-                    Background="Black">
-                <local:HistogramView Model="{Binding Histogram}" />
-            </Border>
+                <Border Classes="statusPill">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Classes="mono secondary" Text="pkts" />
+                        <TextBlock Classes="mono" Text="{Binding PacketsText}" />
+                    </StackPanel>
+                </Border>
 
-            <Border Grid.Row="2" Background="#101010" Padding="8" Margin="0,4,0,0">
-                <TextBlock Text="{Binding StatsText}"
-                           Foreground="#E0E0E0"
-                           FontFamily="Menlo,Consolas,Courier New,monospace"
-                           FontSize="12" />
-            </Border>
-        </Grid>
+                <Border Classes="statusPill">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Classes="mono secondary" Text="bad_crc" />
+                        <TextBlock Classes="mono" Text="{Binding BadCrcText}" />
+                    </StackPanel>
+                </Border>
 
-        <!-- Status bar -->
-        <Border Grid.Row="2" Margin="0,8,0,0" Padding="6" Background="#202020">
-            <TextBlock Text="{Binding StatusLine}"
-                       Foreground="#B0B0B0"
-                       FontFamily="Menlo,Consolas,Courier New,monospace"
-                       FontSize="12" />
+                <Border Classes="statusPill">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Classes="mono secondary" Text="drops" />
+                        <TextBlock Classes="mono" Text="{Binding DropsText}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Classes="statusPill">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Classes="mono secondary" Text="resync" />
+                        <TextBlock Classes="mono" Text="{Binding ResyncText}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Classes="statusPill">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Classes="mono secondary" Text="stm32" />
+                        <TextBlock Classes="mono" Text="{Binding Stm32RateText}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Classes="statusPill">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Classes="mono secondary" Text="host" />
+                        <TextBlock Classes="mono" Text="{Binding HostRateText}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Right-aligned filler with the label echo -->
+                <Border Classes="statusPill" HorizontalAlignment="Right">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Classes="mono secondary" Text="label" />
+                        <TextBlock Classes="mono" Text="{Binding ValidationLabelEcho}" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
         </Border>
     </Grid>
 </Window>

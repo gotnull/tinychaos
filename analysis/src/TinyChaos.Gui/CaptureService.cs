@@ -38,9 +38,9 @@ public sealed class CaptureService : IDisposable
 
     private readonly object _lock = new();
     private long _packets, _badCrc, _badVersion, _drops, _resyncBytes, _samples;
-    private readonly DropTracker _dropTracker = new();
-    private readonly RateEstimator _rate = new();
-    private readonly ChannelStats _channelStats;
+    private DropTracker _dropTracker = new();
+    private RateEstimator _rate = new();
+    private ChannelStats _channelStats;
 
     private SerialPort? _port;
     private CancellationTokenSource? _cts;
@@ -86,6 +86,68 @@ public sealed class CaptureService : IDisposable
         _cts?.Dispose();
         _cts = null;
         _readTask = null;
+    }
+
+    /// <summary>
+    /// Reset all stats counters and clear the waveform / histogram models.
+    /// Called before replaying a file so previous data does not pollute the
+    /// view.
+    /// </summary>
+    public void Reset()
+    {
+        Stop();
+        lock (_lock)
+        {
+            _packets = _badCrc = _badVersion = _drops = _resyncBytes = _samples = 0;
+            _dropTracker = new DropTracker();
+            _rate = new RateEstimator();
+            _channelStats = new ChannelStats(_channelCount);
+        }
+        _waveform.Clear();
+        _histogram.Clear();
+    }
+
+    /// <summary>
+    /// Replay a previously captured raw binary file through the framer.
+    /// Stops any active serial capture first. Runs the read on a worker
+    /// thread; the UI continues to refresh on its own timer.
+    /// </summary>
+    public Task ReplayFileAsync(string path, CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(path))
+            throw new FileNotFoundException($"sample file not found: {path}", path);
+
+        Stop();
+        _wall = Stopwatch.StartNew();
+        IsRunning = true;
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _cts = cts;
+        var task = Task.Run(() =>
+        {
+            try
+            {
+                var framer = new Framer();
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                var buf = new byte[4096];
+                while (!cts.IsCancellationRequested)
+                {
+                    int n = stream.Read(buf, 0, buf.Length);
+                    if (n <= 0) break;
+                    foreach (var ev in framer.Feed(buf.AsMemory(0, n)))
+                    {
+                        HandleEvent(ev);
+                    }
+                }
+                var trailing = framer.FlushResync();
+                if (trailing is not null) HandleEvent(trailing);
+            }
+            finally
+            {
+                IsRunning = false;
+            }
+        }, cts.Token);
+        _readTask = task;
+        return task;
     }
 
     public CaptureSnapshot Snapshot()

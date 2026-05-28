@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
@@ -7,22 +8,33 @@ using Avalonia.Threading;
 namespace TinyChaos.Gui;
 
 /// <summary>
-/// Custom canvas that draws a rolling-window waveform for every channel of
-/// a <see cref="WaveformModel"/>. Polls the model on a dispatcher timer at
-/// 30 Hz; no per-sample UI churn.
+/// Live waveform canvas. Polls its model on a 30 Hz dispatcher timer and
+/// renders the per-channel samples as line traces over a faint reference
+/// grid. Y axis maps to the 12-bit ADC code range (0..4095) with tick
+/// labels at 0, 1024, 2048, 3072, 4095.
 /// </summary>
 public sealed class WaveformView : Control
 {
+    private const int FullScale = 4096; // 12-bit
+    private const double LeftAxisWidth = 36;
+    private const double BottomAxisHeight = 18;
+    private const double Padding = 6;
+
     private static readonly IBrush[] ChannelBrushes =
     {
-        new SolidColorBrush(Color.FromRgb(0x4F, 0xC3, 0xF7)), // channel 0 light blue
-        new SolidColorBrush(Color.FromRgb(0xFF, 0x80, 0x40)), // channel 1 orange
-        new SolidColorBrush(Color.FromRgb(0x81, 0xC7, 0x84)), // channel 2 green
-        new SolidColorBrush(Color.FromRgb(0xCE, 0x93, 0xD8)), // channel 3 violet
+        new SolidColorBrush(Color.FromRgb(0x4F, 0xC3, 0xF7)),
+        new SolidColorBrush(Color.FromRgb(0xFF, 0x80, 0x40)),
+        new SolidColorBrush(Color.FromRgb(0x81, 0xC7, 0x84)),
+        new SolidColorBrush(Color.FromRgb(0xCE, 0x93, 0xD8)),
     };
 
-    private static readonly IBrush GridBrush = new SolidColorBrush(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF));
+    private static readonly IBrush AxisTextBrush = new SolidColorBrush(Color.FromArgb(0xB0, 0xC0, 0xC8, 0xD8));
+    private static readonly IBrush GridBrush = new SolidColorBrush(Color.FromArgb(0x18, 0xFF, 0xFF, 0xFF));
     private static readonly IPen GridPen = new Pen(GridBrush, 0.5);
+    private static readonly IBrush MidRailBrush = new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF));
+    private static readonly IPen MidRailPen = new Pen(MidRailBrush, 0.5, new DashStyle(new double[] { 4, 4 }, 0));
+
+    private static readonly Typeface AxisTypeface = new("Menlo,Consolas,monospace", FontStyle.Normal, FontWeight.Normal);
 
     public static readonly StyledProperty<WaveformModel?> ModelProperty =
         AvaloniaProperty.Register<WaveformView, WaveformModel?>(nameof(Model));
@@ -46,14 +58,18 @@ public sealed class WaveformView : Control
     public override void Render(DrawingContext context)
     {
         var bounds = Bounds;
-        // Background is provided by the surrounding Border; just draw grid + traces.
-
-        // Horizontal grid at 1/4 marks (representing 25/50/75% of full scale).
-        for (int i = 1; i < 4; i++)
+        if (bounds.Width <= LeftAxisWidth + Padding || bounds.Height <= BottomAxisHeight + Padding)
         {
-            double y = bounds.Height * i / 4.0;
-            context.DrawLine(GridPen, new Point(0, y), new Point(bounds.Width, y));
+            return;
         }
+
+        var plotRect = new Rect(
+            LeftAxisWidth,
+            Padding,
+            bounds.Width - LeftAxisWidth - Padding,
+            bounds.Height - BottomAxisHeight - Padding);
+
+        DrawAxes(context, plotRect);
 
         var model = Model;
         if (model is null) return;
@@ -63,21 +79,56 @@ public sealed class WaveformView : Control
             var samples = model.Snapshot(ch);
             if (samples.Length < 2) continue;
 
-            var pen = new Pen(ChannelBrushes[ch % ChannelBrushes.Length], 1.0);
-            double xScale = bounds.Width / Math.Max(1, samples.Length - 1);
-            double yScale = bounds.Height / 4096.0; // 12-bit full scale
+            var pen = new Pen(ChannelBrushes[ch % ChannelBrushes.Length], 1.2);
+            double xScale = plotRect.Width / Math.Max(1, samples.Length - 1);
+            double yScale = plotRect.Height / FullScale;
 
             var geometry = new StreamGeometry();
-            using (var ctx = geometry.Open())
+            using (var gctx = geometry.Open())
             {
-                ctx.BeginFigure(new Point(0, bounds.Height - samples[0] * yScale), false);
+                gctx.BeginFigure(new Point(plotRect.Left, plotRect.Bottom - samples[0] * yScale), false);
                 for (int i = 1; i < samples.Length; i++)
                 {
-                    ctx.LineTo(new Point(i * xScale, bounds.Height - samples[i] * yScale));
+                    gctx.LineTo(new Point(plotRect.Left + i * xScale, plotRect.Bottom - samples[i] * yScale));
                 }
-                ctx.EndFigure(false);
+                gctx.EndFigure(false);
             }
             context.DrawGeometry(null, pen, geometry);
+        }
+
+        // Footer: x-axis hint
+        var xLabel = new FormattedText(
+            "samples (rolling window)",
+            CultureInfo.InvariantCulture,
+            FlowDirection.LeftToRight,
+            AxisTypeface, 10.5,
+            AxisTextBrush);
+        context.DrawText(xLabel,
+            new Point(plotRect.Left + (plotRect.Width - xLabel.Width) / 2,
+                      bounds.Height - BottomAxisHeight + 2));
+    }
+
+    private static void DrawAxes(DrawingContext context, Rect plotRect)
+    {
+        // Mid-rail dashed line
+        double mid = plotRect.Top + plotRect.Height / 2;
+        context.DrawLine(MidRailPen, new Point(plotRect.Left, mid), new Point(plotRect.Right, mid));
+
+        // Y-axis ticks at 0 / 1024 / 2048 / 3072 / 4095
+        int[] codes = { 0, 1024, 2048, 3072, 4095 };
+        foreach (var code in codes)
+        {
+            double y = plotRect.Bottom - (code / (double)FullScale) * plotRect.Height;
+            context.DrawLine(GridPen, new Point(plotRect.Left, y), new Point(plotRect.Right, y));
+
+            var label = new FormattedText(
+                code.ToString(CultureInfo.InvariantCulture),
+                CultureInfo.InvariantCulture,
+                FlowDirection.LeftToRight,
+                AxisTypeface, 10,
+                AxisTextBrush);
+            context.DrawText(label,
+                new Point(plotRect.Left - label.Width - 6, y - label.Height / 2));
         }
     }
 }
