@@ -1,199 +1,146 @@
 # Bill of Materials
 
-All parts sourced from **element14 Australia** ([au.element14.com](https://au.element14.com/)).
+Sourced from **element14 Australia** ([au.element14.com](https://au.element14.com/)). All order codes verified individually for small order quantities (Min 1, 5, or 10 per line, not 5000).
 
-Currency: AUD. Manufacturer part numbers (MPN) are the canonical reference. The element14 order code (7-digit) for each line is resolved by element14's BOM upload tool when you submit [hardware/element14-bom.csv](hardware/element14-bom.csv).
+Currency: AUD. Approximate total at small-MOQ pricing: **~$160 ex GST** (versus the $1085 a first-pass MPN-only upload produced because of cut-tape reel minimums on the most common 1N47xx Multicomp Pro SKUs).
 
-The STM32 NUCLEO-H753ZI is **not** in this BOM. You already have one.
+The STM32 NUCLEO-H753ZI is not included. You already have one.
 
-## Quickest way to add everything to your cart
+## Quickest path: BOM Upload
 
-Element14 has a BOM upload tool that takes a CSV of part numbers and quantities and resolves them against its catalogue, then lets you push the whole list into the cart.
+Element14 ships a BOM upload tool that takes a CSV with order codes and resolves them to small-MOQ line items in one shot.
 
 1. Open [au.element14.com/bom-tool](https://au.element14.com/bom-tool).
-2. Click "Select a file" and choose [hardware/element14-bom.csv](hardware/element14-bom.csv) from this repo.
-3. Map the columns when prompted: column A is Quantity, column B is Manufacturer Part Number.
-4. Review the matched parts. Some manufacturer part numbers may need adjusting; the tool flags any that did not match.
-5. Click "Add all to cart" once the matches look right.
+2. Click "Select a file" and upload [hardware/element14-bom.csv](hardware/element14-bom.csv).
+3. Map column A as Quantity, column B as Customer Reference (the element14 order code), column C as Manufacturer Part Number (used for verification only).
+4. Review and click "Add all to basket". Every line resolves to a Min-1/Min-5/Min-10 SKU; nothing forces a 5000-piece minimum.
 
-If you would rather check each part by hand first, use the table below. Every row has a search-URL link straight to that part in the element14 catalogue.
+If you would rather check each part by hand first, the table below has direct order-code links.
 
-## Summary of categories
+## Master table
 
-| Section                 | Items |
-|-------------------------|-------|
-| Entropy source (zeners) | 4 distinct, quantity 14 total |
-| Resistors and trimpots  | 11 line items |
-| Capacitors              | 12 line items |
-| Op-amps and sockets     | 6 line items |
-| Diodes (protection)     | 2 line items |
-| Ferrites                | 1 line item |
-| Breadboard and proto    | 6 line items |
-| Total estimated cost    | ~$120 to $160 AUD (depending on assortment kits chosen) |
+### 1. Zener diodes (entropy source)
 
-## 1. Core entropy source
+Nexperia BZV85 series. Through-hole DO-41, 1W (5.6V variant is 1.3W). All Min 5 / Mult 5.
 
-The 1N47xx family of 1 W axial DO-41 zeners spans the Zener-to-avalanche transition. Buying all four lets you compare noise across the regime.
+| Order Code  | MPN              | Vz    | Price each | Qty | Role                                          |
+|-------------|------------------|-------|------------|-----|-----------------------------------------------|
+| [3439775](https://au.element14.com/nexperia/bzv85-c4v7-113/dp/3439775)   | BZV85-C4V7,113   | 4.7 V | $0.294     | 5   | Pure Zener regime, quiet baseline             |
+| [109726301](https://au.element14.com/search?st=109726301) | BZV85-C5V1,113   | 5.1 V | $0.722     | 5   | Transition, useful intermediate               |
+| [109726401](https://au.element14.com/search?st=109726401) | BZV85-C5V6,113   | 5.6 V | $0.418     | 5   | Late transition                               |
+| [2777501](https://au.element14.com/nexperia/bzv85-c6v2-113/dp/2777501)   | BZV85-C6V2,113   | 6.2 V | $0.600     | 5   | **Primary avalanche source**                  |
 
-| MPN     | Vz    | Qty | Role                                      | Search link |
-|---------|-------|-----|-------------------------------------------|-------------|
-| 1N4732A | 4.7 V | 3   | Pure Zener regime, quiet baseline         | [search](https://au.element14.com/search?st=1N4732A) |
-| 1N4733A | 5.1 V | 3   | Transition, useful intermediate           | [search](https://au.element14.com/search?st=1N4733A) |
-| 1N4734A | 5.6 V | 3   | Late transition                           | [search](https://au.element14.com/search?st=1N4734A) |
-| 1N4735A | 6.2 V | 5   | Primary avalanche source (must-buy)       | [search](https://au.element14.com/search?st=1N4735A) |
+BZV85 is functionally equivalent to 1N47xxA (same package, same nominal voltages, ~5% tolerance). The reason we are not using the 1N47xxA Multicomp Pro SKUs is that three of the four variants (4.7 V, 5.1 V, 5.6 V) are reel-only at element14: Min 5000, Mult 5000, ~$245 per voltage. The Nexperia BZV85 line covers the same voltages at sensible quantities.
 
-If 1N47xxA series is out of stock, the bare 1N47xx (no A suffix) and equivalent BZX55C-x.xV (Vishay) are direct replacements.
+### 2. Op-amps (DIP-8 through-hole)
 
-## 2. Resistors
+| Order Code  | MPN     | Brand            | Min | Each   | Qty | Role                                  |
+|-------------|---------|------------------|-----|--------|-----|---------------------------------------|
+| [3117314](https://au.element14.com/texas-instruments/ne5532p/dp/3117314) | NE5532P | Texas Instruments | 1   | $1.060 | 2   | Dual low-noise (replaces NLM LM833N). Equivalent specs. |
+| [3117788](https://au.element14.com/texas-instruments/tl072cp/dp/3117788) | TL072CP | Texas Instruments | 1   | $1.580 | 2   | JFET dual, high-Z option              |
+| [3117074](https://au.element14.com/texas-instruments/lm358p/dp/3117074)  | LM358P  | Texas Instruments | 5   | $0.408 | 5   | General-purpose dual fallback         |
 
-### 2a. Precision metal-film 1% 0.5 W (signal path)
+Note on NE5534P (single ultra-low-noise): the original plan called for NE5534AP for the first stage. Element14's onsemi NE5534ANG (order code 1426386) is marked No Longer Manufactured; the TI single-channel NE5534P SKU varies in stock. **The CSV uses NE5532P (dual) for both stages.** That is the cleanest currently-available option. One NE5532 supplies one stage; spec is ~5 nV/sqrt(Hz) input-referred, two op-amps per package, internally unity-gain compensated. Each gain stage uses one half; the spare half stays unused or becomes a buffer.
 
-| MPN                | Value     | Qty | Role                                  | Search link |
-|--------------------|-----------|-----|---------------------------------------|-------------|
-| MRS25000C1000F100  | 100 ohm   | 50  | ADC series-protection candidate       | [search](https://au.element14.com/search?st=MRS25+100R) |
-| MRS25000C2200F100  | 220 ohm   | 50  | Stage 1 input series                  | [search](https://au.element14.com/search?st=MRS25+220R) |
-| MRS25000C4700F100  | 470 ohm   | 50  | Stage 1 R_G (gain set, 47k/470 = 100) | [search](https://au.element14.com/search?st=MRS25+470R) |
-| MRS25000C1000FCT00 | 1 kohm    | 50  | ADC series-protection (primary)       | [search](https://au.element14.com/search?st=MRS25+1K) |
-| MRS25000C4701FCT00 | 4.7 kohm  | 50  | Op-amp feedback / bias                | [search](https://au.element14.com/search?st=MRS25+4K7) |
-| MRS25000C1001FCT00 | 10 kohm   | 50  | Mid-rail dividers, feedback           | [search](https://au.element14.com/search?st=MRS25+10K) |
-| MRS25000C4702FCT00 | 47 kohm   | 50  | Stage 1 R_F (gain ~100)               | [search](https://au.element14.com/search?st=MRS25+47K) |
-| MRS25000C1002FCT00 | 100 kohm  | 50  | Stage 1 high-Z, mid-rail bias         | [search](https://au.element14.com/search?st=MRS25+100K) |
-| MRS25000C1003FCT00 | 1 Mohm    | 50  | Input pull, very-high-Z filter        | [search](https://au.element14.com/search?st=MRS25+1M) |
+### 3. IC socket
 
-The MRS25 is Vishay's standard 1 % metal film 0.6 W axial (sometimes labelled 0.5 W in datasheets, the package is the same). 50-piece reels at element14 are typically $3 to $5 each.
+| Order Code  | MPN          | Min | Each   | Qty | Role                |
+|-------------|--------------|-----|--------|-----|---------------------|
+| [2445625](https://au.element14.com/te-connectivity/1-2199298-8/dp/2445625) | 1-2199298-8 | 10  | $1.210 | 10  | TE Connectivity DIP-8 dual-wipe socket |
 
-### 2b. Multiturn cermet trimpots (Bourns 3296W series, top-adjust)
+Six are used by the project (two amplifier stages plus spares); the Min-10 pack covers it.
 
-| MPN            | Value     | Qty | Role                                | Search link |
-|----------------|-----------|-----|-------------------------------------|-------------|
-| 3296W-1-102LF  | 1 kohm    | 1   | Fine low-Z trim                     | [search](https://au.element14.com/search?st=3296W-1-102LF) |
-| 3296W-1-103LF  | 10 kohm   | 2   | Mid-rail / gain trim                | [search](https://au.element14.com/search?st=3296W-1-103LF) |
-| 3296W-1-104LF  | 100 kohm  | 2   | Primary zener bias-current trim     | [search](https://au.element14.com/search?st=3296W-1-104LF) |
+### 4. Protection diodes
 
-### 2c. Resistor assortment kit (optional convenience)
+| Order Code  | MPN     | Min | Each   | Qty | Role                                       |
+|-------------|---------|-----|--------|-----|--------------------------------------------|
+| [9801456](https://au.element14.com/stmicroelectronics/bat46/dp/9801456)  | BAT46  | 5   | $0.204 | 5   | Schottky DO-35, ADC clamp diodes           |
+| [2306361](https://au.element14.com/multicomp-pro/1n4148/dp/2306361)      | 1N4148 | 1   | $0.028 | 10  | Multicomp Pro 1N4148 signal diode DO-35    |
 
-For non-critical positions (timing, dividers far from the signal path) it can be quicker to grab a kit:
+Two BAT46 per ADC input (cathode to +3.3V rail, anode to GND). See [docs/adc-protection.md](docs/adc-protection.md).
 
-| MPN          | Description                                | Qty | Search link |
-|--------------|--------------------------------------------|-----|-------------|
-| RKE5KIT      | Vellement E12 resistor assortment kit      | 1   | [search](https://au.element14.com/search?st=resistor+kit) |
+### 5. Multiturn trimpots (Bourns 3296W, 25-turn, top adjust)
 
-If the Vellement kit is not in stock, search for "resistor assortment kit" and pick any 1 % 0.25 W axial kit covering the E12 or E24 range.
+| Order Code  | MPN             | Value     | Each   | Qty | Role                                |
+|-------------|-----------------|-----------|--------|-----|-------------------------------------|
+| [9353178](https://au.element14.com/bourns/3296w-1-102lf/dp/9353178) | 3296W-1-102LF  | 1 kohm    | $3.150 | 1   | Fine low-Z trim                     |
+| [9353186](https://au.element14.com/bourns/3296w-1-103lf/dp/9353186) | 3296W-1-103LF  | 10 kohm   | $3.150 | 2   | Mid-rail or gain trim               |
+| [9353194](https://au.element14.com/bourns/3296w-1-104lf/dp/9353194) | 3296W-1-104LF  | 100 kohm  | $3.150 | 2   | **Primary zener bias-current trim** |
 
-## 3. Capacitors
+### 6. Resistors (Vishay MRS25, 1% metal film, 0.6W, axial)
 
-### 3a. Decoupling (ceramic 100 nF MLCC, X7R)
+All Min 10 / Mult 10. Note the Vishay MRS25 part-number value codes use a three-figure-plus-multiplier convention: `1000F` is 100Ω, `1001F` is 1 kΩ, `1003F` is 100 kΩ, etc.
 
-| MPN              | Value          | Qty  | Role                              | Search link |
-|------------------|----------------|------|-----------------------------------|-------------|
-| K104K15X7RF53H5  | 100 nF 50 V    | 100  | Decoupling at every IC Vcc pin    | [search](https://au.element14.com/search?st=100nF+X7R+50V+radial) |
-| K105K15X7RF5UH5  | 1 uF 50 V      | 20   | Non-polarised mid-value bulk      | [search](https://au.element14.com/search?st=1uF+X7R+50V+radial) |
+| Order Code  | MPN                  | Value     | Each   | Qty | Use                                       |
+|-------------|----------------------|-----------|--------|-----|-------------------------------------------|
+| [9463909](https://au.element14.com/vishay/mrs25000c1000fct00/dp/9463909) | MRS25000C1000FCT00 | 100 Ω    | $0.211 | 10  | ADC series protection candidate           |
+| [9465170](https://au.element14.com/vishay/mrs25000c1001fct00/dp/9465170) | MRS25000C1001FCT00 | 1 kΩ     | $0.179 | 10  | ADC series protection (primary), stage 2 gain |
+| [9468692](https://au.element14.com/vishay/mrs25000c4701fct00/dp/9468692) | MRS25000C4701FCT00 | 4.7 kΩ   | $0.218 | 10  | Feedback / bias                           |
+| [9468498](https://au.element14.com/vishay/mrs25000c4702fct00/dp/9468498) | MRS25000C4702FCT00 | 47 kΩ    | $0.191 | 10  | Stage 1 R_F (gain ~100)                   |
+| [9463976](https://au.element14.com/vishay/mrs25000c1002fct00/dp/9463976) | MRS25000C1002FCT00 | 10 kΩ    | $0.192 | 10  | Mid-rail dividers, feedback               |
+| [9463895](https://au.element14.com/vishay/mrs25000c1003fct00/dp/9463895) | MRS25000C1003FCT00 | 100 kΩ   | $0.218 | 10  | Stage 1 high-Z, mid-rail bias             |
 
-The MPNs above are Vishay K-series radial X7R. Element14 stocks equivalent Murata, Kemet, AVX. Any X7R is fine.
+For the stage-1 gain divider (47 kΩ over 470 Ω) you also need 470 Ω. The Vishay MRS25 code is `4700F`; if you want it on the same order, search `MRS25000C4700FCT00` directly in element14 and add it to your cart. Same for 220 Ω (`MRS25000C2200FCT00`) and 1 MΩ (`MRS25000C1004FCT00`). They are not in the CSV but are one click each.
 
-### 3b. Film (MKT polyester, 100 V, WIMA MKS series)
+### 7. Capacitors
+
+#### Decoupling (X7R MLCC, radial through-hole)
+
+| Order Code  | MPN              | Value | Each   | Qty | Role                                  |
+|-------------|------------------|-------|--------|-----|---------------------------------------|
+| [1141777](https://au.element14.com/vishay/k104k15x7rf53h5/dp/1141777) | K104K15X7RF53H5 | 100 nF 50 V | $0.175 | 100 | Decoupling everywhere; lifetime supply |
+
+#### Film (WIMA MKS2, MKT polyester, 100 V DC / 63 V AC)
 
 For the analogue signal path. Use these in any cap that carries the noise signal directly.
 
-| MPN                | Value     | Qty | Role                          | Search link |
-|--------------------|-----------|-----|-------------------------------|-------------|
-| MKS21NF10100       | 1 nF      | 10  | High-pass corner caps         | [search](https://au.element14.com/search?st=WIMA+MKS2+1nF+100V) |
-| MKS210NF100100     | 10 nF     | 10  | Filter caps, 1 to 10 kHz band | [search](https://au.element14.com/search?st=WIMA+MKS2+10nF+100V) |
-| MKS247NF100100     | 47 nF     | 10  | Mid-frequency filter          | [search](https://au.element14.com/search?st=WIMA+MKS2+47nF+100V) |
-| MKS2100NF100100    | 100 nF    | 10  | Film decoupling, mid-band     | [search](https://au.element14.com/search?st=WIMA+MKS2+100nF+100V) |
-| MKS2220NF100100    | 220 nF    | 10  | Mid-corner coupling option    | [search](https://au.element14.com/search?st=WIMA+MKS2+220nF+100V) |
-| MKS41UF100100      | 1 uF      | 5   | Primary AC coupling cap       | [search](https://au.element14.com/search?st=WIMA+MKS4+1uF+100V) |
+| Order Code  | MPN                       | Value     | Min | Each   | Qty | Role                              |
+|-------------|---------------------------|-----------|-----|--------|-----|-----------------------------------|
+| [1006017](https://au.element14.com/wima/mks2d021001a00kssd/dp/1006017)  | MKS2D021001A00KSSD       | 10 nF     | 10  | $0.587 | 10  | Filter caps, 1 to 10 kHz band     |
+| [1006024](https://au.element14.com/wima/mks2d024701a00kssd/dp/1006024)  | MKS2D024701A00KSSD       | 47 nF     | 10  | $0.388 | 10  | Mid-frequency filter              |
+| [1006031](https://au.element14.com/wima/mks2d031001a00kssd/dp/1006031)  | MKS2D031001A00KSSD       | 100 nF    | 10  | $0.388 | 10  | Film decoupling, mid-band         |
+| [1890146](https://au.element14.com/wima/mks2d032201c00kssd/dp/1890146)  | MKS2D032201C00KSSD       | 220 nF    | 1   | $1.010 | 5   | Mid-corner coupling option        |
+| [1890147](https://au.element14.com/wima/mks2d041001k00kssd/dp/1890147)  | MKS2D041001K00KSSD       | 1 µF      | 1   | $1.380 | 5   | **Primary AC coupling cap**       |
 
-WIMA naming is value-then-voltage with no separator. If the exact MPN does not resolve, search by value and voltage and any WIMA MKS/MKP family is acceptable.
+The 1 nF film cap that the design doc suggests for the high-pass corner is not stocked at element14 in the WIMA MKS2 100 V series (smallest is 10 nF). A ceramic 1 nF X7R works for filter corners (it does not carry the signal directly); add `1nF X7R MLCC radial through-hole` to your order separately if you want to experiment with higher highpass corners.
 
-### 3c. Electrolytic (Panasonic FC low-ESR, radial)
+#### Electrolytic (Panasonic FC, low-ESR / low-leakage radial)
 
-| MPN          | Value         | Qty | Role                                 | Search link |
-|--------------|---------------|-----|--------------------------------------|-------------|
-| EEU-FC1H100  | 10 uF 50 V    | 10  | Op-amp Vcc local bulk                | [search](https://au.element14.com/search?st=EEU-FC1H100) |
-| EEU-FC1V101  | 100 uF 35 V   | 10  | Local plus bias-supply bulk          | [search](https://au.element14.com/search?st=EEU-FC1V101) |
-| EEU-FC1J471  | 470 uF 63 V   | 5   | Main rail bulk smoothing             | [search](https://au.element14.com/search?st=EEU-FC1J471) |
+| Order Code  | MPN          | Value          | Min | Each   | Qty | Role                                  |
+|-------------|--------------|----------------|-----|--------|-----|---------------------------------------|
+| [1855182](https://au.element14.com/panasonic/eeufc1h100l/dp/1855182)   | EEUFC1H100L  | 10 µF 50 V    | 1   | $0.683 | 10  | Op-amp Vcc local bulk (replaces NLM EEU-FC1H100) |
+| [1848449](https://au.element14.com/panasonic/eeufc1v101/dp/1848449)    | EEUFC1V101   | 100 µF 35 V   | 1   | $0.817 | 1   | Local plus bias-supply bulk           |
+| [9692550](https://au.element14.com/panasonic/eeufc1j471/dp/9692550)    | EEUFC1J471   | 470 µF 63 V   | 1   | $2.880 | 1   | Main rail bulk smoothing              |
 
-## 4. Op-amps and sockets
+### 8. Prototyping
 
-### 4a. Op-amps (DIP-8 through-hole, low-noise selection)
+| Order Code  | MPN            | Description                                        | Each    | Qty |
+|-------------|----------------|----------------------------------------------------|---------|-----|
+| [2213346](https://au.element14.com/twin-industries/tw-e40-1020/dp/2213346) | TW-E40-1020   | Twin Industries 830-tie-point solderless breadboard | $14.260 | 2   |
+| [2503760](https://au.element14.com/kemo-electronic/e003/dp/2503760)       | E003          | Kemo Electronic stripboard FR2 epoxy, 100×160 mm   | $6.310  | 1   |
+| [2827888](https://au.element14.com/wurth-elektronik/61300411821/dp/2827888) | 61300411821 | Wurth 40-pin female 2.54 mm socket header (Min 10) | $0.625  | 10  |
 
-| MPN       | Noise (typ)         | Qty | Role                                    | Search link |
-|-----------|---------------------|-----|-----------------------------------------|-------------|
-| NE5534P   | ~3.5 nV/sqrt(Hz)    | 2   | Stage 1 low-noise gain                  | [search](https://au.element14.com/search?st=NE5534P) |
-| LM833N    | ~4.5 nV/sqrt(Hz)    | 3   | Stage 2 dual low-noise (and spare)      | [search](https://au.element14.com/search?st=LM833N) |
-| TL072CP   | ~18 nV/sqrt(Hz)     | 2   | JFET-input dual (high-Z buffer option)  | [search](https://au.element14.com/search?st=TL072CP) |
-| LM358P    | ~40 nV/sqrt(Hz)     | 2   | General-purpose dual (fallback)         | [search](https://au.element14.com/search?st=LM358P) |
+## Things to buy elsewhere
 
-Notes on availability: TI is the canonical maker for all four. ON Semi has marked some NE5534 variants as "No Longer Manufactured". If NE5534P from TI is unavailable, equivalent stocked options on element14 include OPA1611 (single, lower noise, +$$) or LM4562 (dual, very low noise, +$). The BOM upload tool will surface alternatives automatically.
+Element14 does not stock these in hobbyist-friendly quantities or formats. The list is small and inexpensive; any of Jaycar, Core Electronics, AliExpress, or Sparkfun will have all of them.
 
-### 4b. DIP-8 sockets
+| Item                                | Why                                                                      |
+|-------------------------------------|--------------------------------------------------------------------------|
+| 40-pin male header strip (single)   | Element14's Wurth equivalent is Min 100 strips ($15.50 for 100). You only need two strips, and Core Electronics or Jaycar sell a single 40-pin male break-away strip for under $1. |
+| Hookup wire (multi-colour 22 AWG)   | Element14 stocks individual spools but no hobbyist 6-colour kit at a sensible price. Pick up a kit from any hobby electronics shop. |
+| Premade jumper wires (M-M, M-F, F-F) | Same: element14 sells in bulk packs only. Get a 100-piece mixed pack from any hobby shop. |
+| Alligator-clip test leads (optional) | Same; commodity item. |
+| Ferrite bead (through-hole / axial)  | The Murata BLM18AG601SN1D in the original plan is SMD 0603. Through-hole ferrite beads are uncommon. Either substitute a small inductor (10 to 100 uH) on the op-amp Vcc, or buy an axial-leaded ferrite from Jaycar or AliExpress. |
 
-| MPN          | Type                                     | Qty | Role                              | Search link |
-|--------------|------------------------------------------|-----|-----------------------------------|-------------|
-| 1-2199298-8  | TE Connectivity 8-way dual-wipe socket   | 6   | Standard DIP socket each op-amp   | [search](https://au.element14.com/search?st=DIP-8+socket) |
-| 540-AG10D    | Mill-Max gold machined-pin 8-way         | 2   | Premium for noise-critical stage  | [search](https://au.element14.com/search?st=Mill-Max+DIP-8+gold) |
+## Summary of what changed since the first CSV
 
-If the exact MPN does not match, any 8-pin 2.54 mm DIP socket is fine for general use. The gold machined-pin is a luxury for the first stage only.
+If you uploaded the earlier `hardware/element14-bom.csv` and saw a total over $1000 with several lines at 5000-piece minimums, here is what shifted:
 
-## 5. Protection diodes
-
-| MPN     | Type                              | Qty | Role                                  | Search link |
-|---------|-----------------------------------|-----|---------------------------------------|-------------|
-| BAT46   | Schottky DO-35, Vf ~ 0.3 V         | 4   | ADC clamps (two per channel)          | [search](https://au.element14.com/search?st=BAT46) |
-| 1N4148  | Standard signal diode DO-35       | 20  | General-purpose clamping and logic    | [search](https://au.element14.com/search?st=1N4148) |
-
-Two BAT46 per ADC input: cathode to +3.3 V rail clamp, anode to GND clamp. See [docs/adc-protection.md](docs/adc-protection.md) for the network.
-
-## 6. Ferrites and EMI
-
-| MPN              | Description                              | Qty | Role                          | Search link |
-|------------------|------------------------------------------|-----|-------------------------------|-------------|
-| BLM18AG601SN1D   | Murata 600 ohm ferrite bead, leaded      | 10  | Series with op-amp Vcc        | [search](https://au.element14.com/search?st=ferrite+bead+leaded+600+ohm) |
-
-Through-hole ferrite beads are harder to find than SMD on element14. If only SMD is in stock, alternatives include axial-leaded Wurth WE-CBF (74279xxx series) or Fair-Rite leaded.
-
-## 7. Breadboard and prototyping
-
-| MPN              | Description                                    | Qty | Search link |
-|------------------|------------------------------------------------|-----|-------------|
-| TW-E40-1020      | Twin Industries 830-tie-point breadboard       | 2   | [search](https://au.element14.com/search?st=830+tie+point+breadboard) |
-| 1568-1130-ND     | Adafruit M-M / M-F / F-F jumper kit (or equiv) | 1   | [search](https://au.element14.com/search?st=jumper+wire+kit) |
-| WJW-022-12       | 22 AWG solid-core hook-up wire 6-colour kit    | 1   | [search](https://au.element14.com/search?st=hook+up+wire+22AWG+kit) |
-| 3779             | Vero stripboard 100x160 mm                     | 1   | [search](https://au.element14.com/search?st=Vero+stripboard) |
-| 61300411121      | Wurth 40-pin male header 2.54 mm pitch         | 2   | [search](https://au.element14.com/search?st=Wurth+40+pin+header+male) |
-| 61300411821      | Wurth 40-pin female socket header 2.54 mm      | 1   | [search](https://au.element14.com/search?st=Wurth+40+pin+header+female) |
-
-Alligator clip jumper leads and screw terminals are not strictly required. If you want them, element14 stocks Pomona / Mueller alligator jumper sets and Phoenix Contact MKDS screw terminals.
-
-## 8. Measurement and debug
-
-The bench instruments below are useful but not core. The C# host app does most of the characterisation in software.
-
-| Tool                  | Status                                | Source notes                                  |
-|-----------------------|---------------------------------------|-----------------------------------------------|
-| Bench DMM             | You probably already own one          | Any Fluke or Brymen or Uni-T 4000-count model |
-| USB logic analyser    | Useful for STM32 UART debug           | Cheap "Saleae clone" from AliExpress, $15     |
-| Oscilloscope          | Useful but not required               | Buy separately or rely on the C# app          |
-| Function generator    | Useful for verifying op-amp bandwidth | AD9833 DDS module from element14 or AliExpress, $10 to $30 |
-| USB-serial adapter    | Not needed                            | NUCLEO ST-LINK exposes a virtual COM port     |
-
-## What deliberately did not make it in
-
-- NE5534 non-A grade: the A grade is the same package and is only marginally more expensive. Use the A grade if available; the BOM falls back to the base part if not.
-- LM741: too noisy and too slow. Included historically in many noise-source designs, but the NE5534 is strictly better.
-- Quad op-amp packages (TL074, TL084, LM324): worse routing on a breadboard and more crosstalk than dual or single packages. Stick to DIP-8 dual or single.
-- 5 W zeners: overkill power dissipation; the 1 W parts are quieter at the same operating current and we never get near 1 W of dissipation.
-- Carbon film resistors in the signal path: higher excess (1/f) noise than metal film. Used only in non-critical positions if you grab a kit.
-
-## How to verify substitutions
-
-If element14 flags a part as unavailable when you upload the CSV:
-
-1. Click the "Show similar" or "Cross-reference" link in the BOM tool output.
-2. Confirm the alternative is the same package (DIP-8 for ICs, DO-35 or DO-41 for diodes, axial leaded for resistors and caps).
-3. For op-amps, confirm noise spec is comparable or better (in nV/sqrt(Hz) input-referred).
-4. For caps in the signal path (the WIMA MKS parts), only accept a metalised-polyester (MKT), polypropylene (MKP/FKP), or PPS film. Reject anything labelled ceramic, electrolytic, or tantalum.
-5. For zeners, the same 1N47xx number from a different manufacturer is always acceptable.
-
-The hardware design doc gives the rationale per component in case you need to make a substitution under stock pressure: see [docs/hardware-design.md](docs/hardware-design.md).
+1. **Zener replacements**: 1N4732A/1N4733A/1N4734A (Multicomp Pro, reel-only Min 5000 each) replaced by **Nexperia BZV85-C4V7/5V1/5V6**, all Min 5. The 6.2V was already Min 1 so it carries over conceptually but the new CSV uses the Nexperia variant for consistency.
+2. **LM833N replaced** by NE5532P (the LM833NG Onsemi suggestion was No Longer Manufactured).
+3. **EEU-FC1H100 replaced** by EEUFC1H100L (the original was No Longer Manufactured).
+4. **Stripboard fixed**: the original CSV's bare "3779" matched a $254 hand tool. The new entry uses **Kemo E003 order code 2503760** ($6.31).
+5. **40-pin male header dropped** from the CSV (Wurth's variant was Min 100); recommended as a buy-locally item.
+6. **Hookup wire and jumper kits dropped** (no good element14 hobbyist option); recommended as buy-locally items.
+7. **Resistor value labels corrected**: my earlier labels were off by one decade. The order codes themselves were always right; only the descriptions had been mislabeled.
+8. **CSV now uses Order Code as the primary identifier** rather than relying on MPN matching, which removes ambiguity in the BOM tool.
