@@ -144,24 +144,26 @@ cd analysis
 dotnet run --project src/TinyChaos.Gui -c Release
 ```
 
-### Panels
+### Layout
 
-The window is laid out as five cards plus a status footer:
+The window is split into three persistent sections plus a tab strip:
 
-1. **CONNECTION** card. Port dropdown (live-populated from `SerialPort.GetPortNames()`), Refresh button, Connect / Disconnect toggle, validation-label text box. A status dot and short text show idle / connected / replaying / error states.
-2. **SAMPLES** card. ListBox of every `*.bin` file in the samples directory. Each row shows file name, file size, and "modified" age (e.g., "3 min ago", "2 d ago"). Click a row and the GUI:
-   - Stops any active live capture
-   - Resets all stats, the waveform ring buffer, and the histogram
-   - Opens the file through `TinyChaos.Protocol.Framer` and replays it
-   The Refresh button re-enumerates the directory; the Open folder button opens the directory in Finder / Explorer / xdg-open.
-3. **WAVEFORM** card. Live rolling-window waveform per channel with a channel-colour legend (channel 0 zener / channel 1 baseline). Y-axis ticks at 0 / 1024 / 2048 / 3072 / 4095 (12-bit). Mid-rail dashed reference line. 60 fps redraw.
-4. **DISTRIBUTION** card. Cumulative per-channel histogram drawn as line envelopes with a low-alpha fill. X-axis ticks at the same 12-bit codes. 10 Hz redraw (histograms change slowly).
-5. **PER-CHANNEL STATISTICS** card. Monospaced row per channel showing n, min, max, mean, std.
-6. **BUILD & FLASH** card. Self-test, Build, and Flash buttons that shell out to `make`, `make` (default target), and `make flash` respectively in the firmware directory. A `Clear` button resets the streaming console. The console is a scrollable monospaced text panel that captures stdout and stderr from the subprocess line by line; stderr lines are prefixed with `! ` for visual distinction. A status indicator next to the title shows idle / building / flashing / ok / failed. Buttons disable while a subprocess is running so you cannot double-fire.
+1. **Persistent CONNECTION card** at the top. Port dropdown (live-populated from `SerialPort.GetPortNames()`), Refresh button, Connect / Disconnect toggle, validation-label text box. A status dot and short text show idle / connected / replaying / error states. Stays visible across all tabs because you usually want to see connection state regardless of what you are doing.
+2. **TabControl** in the middle, three tabs:
+   - **Live capture** tab. Three stacked cards:
+     - **WAVEFORM** card. Rolling-window waveform per channel with a channel-colour legend (channel 0 zener / channel 1 baseline). Y-axis ticks at 0 / 1024 / 2048 / 3072 / 4095 (12-bit). Mid-rail dashed reference line. 60 fps redraw.
+     - **DISTRIBUTION** card. Cumulative per-channel histogram drawn as line envelopes with a low-alpha fill. X-axis ticks at the same 12-bit codes. 10 Hz redraw.
+     - **PER-CHANNEL STATISTICS** card. Monospaced row per channel showing n, min, max, mean, std.
+   - **Samples** tab. ListBox of every `*.bin` file in the samples directory. Each row shows file name, file size (KB / MB), and "modified" age ("3 min ago", "2 d ago"). Header shows the resolved samples directory path. Click any row and the GUI:
+     - Stops any active live capture
+     - Resets all stats, the waveform ring buffer, and the histogram
+     - Opens the file through `TinyChaos.Protocol.Framer` and replays it
+     - Switches the status footer's mode pill to `replay`
+     Refresh re-enumerates the directory. Open folder opens it in Finder / Explorer / xdg-open.
+   - **Firmware** tab. **BUILD & FLASH** card. Self-test, Build, and Flash buttons that shell out to `make test`, `make`, and `make flash` respectively in the firmware directory. A `Clear` button resets the streaming console. The console is a full-tab scrollable monospaced text panel that captures stdout and stderr from the subprocess line by line; stderr lines are prefixed with `! ` for visual distinction. A status indicator next to the title shows idle / building / flashing / ok / failed. Buttons disable while a subprocess is running so you cannot double-fire.
 
-   Firmware directory discovery: same algorithm as samples (`TINYCHAOS_FIRMWARE` env var, walk up looking for `firmware/` next to `.git`, or display "not found" if neither resolves).
-
-Bottom **status footer** lists mode (live / replay), packets, bad CRC count, dropped packets, resync bytes, the STM32-derived sample rate, the host-derived sample rate, and the active validation label, all in tabular monospaced pill badges.
+     Firmware directory discovery: same algorithm as samples (`TINYCHAOS_FIRMWARE` env var, walk up looking for `firmware/` next to `.git`, or display "not found" if neither resolves).
+3. **Persistent status footer** at the bottom. Lists mode (live / replay), packets, bad CRC count, dropped packets, resync bytes, the STM32-derived sample rate, the host-derived sample rate, and the active validation label as tabular monospaced pill badges. Stays visible across all tabs.
 
 ### Samples directory discovery
 

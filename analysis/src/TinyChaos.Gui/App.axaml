@@ -6,12 +6,16 @@
     <Application.Styles>
         <FluentTheme />
 
-        <!-- Section header -->
+        <!-- Section header. Small uppercase eyebrow label, not a headline.
+             Inspired by Linear / Stripe / Notion section markers: low chroma,
+             medium weight, generous letter-spacing for legibility at small
+             size. -->
         <Style Selector="TextBlock.h1">
-            <Setter Property="FontSize" Value="13" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-            <Setter Property="LetterSpacing" Value="0.5" />
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+            <Setter Property="LetterSpacing" Value="1.2" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
 
         <!-- Subtle subheader / caption -->
@@ -130,6 +134,30 @@
             <Setter Property="Padding" Value="10,0" />
             <Setter Property="FontSize" Value="12" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <!-- TabControl + TabItem polish.
+             Fluent defaults render tab headers in a bold 14px+ which fights
+             with the small uppercase section labels inside each tab. Bring
+             them down to 12px Medium, no border underneath, and let the
+             selected tab indicator carry the active-state weight. -->
+        <Style Selector="TabControl">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="TabItem">
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="Padding" Value="2,6" />
+            <Setter Property="Margin" Value="0,0,18,0" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        </Style>
+        <Style Selector="TabItem:selected">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="TabItem:pointerover /template/ Border#PART_LayoutRoot">
+            <Setter Property="Background" Value="Transparent" />
         </Style>
         <!-- TextBox watermark/placeholder vertical centering -->
         <Style Selector="TextBox /template/ TextBlock#PART_Watermark">
