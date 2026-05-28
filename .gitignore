@@ -1,0 +1,47 @@
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build outputs
+build/
+out/
+bin/
+obj/
+
+# STM32 / Cube / Keil / IAR artefacts (when firmware lands)
+Debug/
+Release/
+*.elf
+*.hex
+*.bin
+*.map
+*.list
+*.lst
+*.o
+*.d
+
+# .NET / C# (when analysis app lands)
+*.user
+*.suo
+[Bb]in/
+[Oo]bj/
+packages/
+.vs/
+
+# Python (in case any scripts land in analysis/ or tools/)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# KiCad / hardware (when schematic lands)
+*-backups/
+*.bak
+*.kicad_pcb-bak
+fp-info-cache
