@@ -2,7 +2,7 @@
 
 Sourced from **element14 Australia** ([au.element14.com](https://au.element14.com/)). All order codes verified individually for small order quantities (Min 1, 5, or 10 per line, not 5000).
 
-Currency: AUD. Approximate total at small-MOQ pricing: **~$160 ex GST** (versus the $1085 a first-pass MPN-only upload produced because of cut-tape reel minimums on the most common 1N47xx Multicomp Pro SKUs).
+Currency: AUD. Verified total at small-MOQ pricing: **$120.89 ex GST** ($132.97 inc GST), measured by uploading [hardware/element14-bom.csv](hardware/element14-bom.csv) into the element14 BOM tool with all four ambiguous rows resolved to their cheapest Min-N Each variants. For reference, the first-pass MPN-only upload of an earlier CSV came out at $1085 because of cut-tape reel minimums on the most common 1N47xx Multicomp Pro SKUs.
 
 The STM32 NUCLEO-H753ZI is not included. You already have one.
 
