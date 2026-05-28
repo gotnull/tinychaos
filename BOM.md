@@ -96,8 +96,8 @@ For the analogue signal path. Use these in any cap that carries the noise signal
 
 | Order Code  | MPN                       | Value     | Min | Each   | Qty | Role                              |
 |-------------|---------------------------|-----------|-----|--------|-----|-----------------------------------|
-| [1006017](https://au.element14.com/wima/mks2d021001a00kssd/dp/1006017)  | MKS2D021001A00KSSD       | 10 nF     | 10  | $0.587 | 10  | Filter caps, 1 to 10 kHz band     |
-| [1006024](https://au.element14.com/wima/mks2d024701a00kssd/dp/1006024)  | MKS2D024701A00KSSD       | 47 nF     | 10  | $0.388 | 10  | Mid-frequency filter              |
+| [100601701](https://au.element14.com/search?st=100601701) | MKS2D021001A00KSSD       | 10 nF     | 10  | $0.348 | 10  | Filter caps, 1 to 10 kHz band. Same WIMA MKS2 part as `1006017`; this SKU has flat $0.348 vs the other's tiered $0.587 at 10+, cheaper at our quantity. |
+| [100602401](https://au.element14.com/search?st=100602401) | MKS2D024701A00KSSD       | 47 nF     | 10  | $0.2815| 10  | Mid-frequency filter. Same WIMA MKS2 part as `1006024`; this SKU is flat $0.2815, cheaper than the tiered alternate at our quantity. |
 | [1006031](https://au.element14.com/wima/mks2d031001a00kssd/dp/1006031)  | MKS2D031001A00KSSD       | 100 nF    | 10  | $0.388 | 10  | Film decoupling, mid-band         |
 | [1890146](https://au.element14.com/wima/mks2d032201c00kssd/dp/1890146)  | MKS2D032201C00KSSD       | 220 nF    | 1   | $1.010 | 5   | Mid-corner coupling option        |
 | [1890147](https://au.element14.com/wima/mks2d041001k00kssd/dp/1890147)  | MKS2D041001K00KSSD       | 1 µF      | 1   | $1.380 | 5   | **Primary AC coupling cap**       |
@@ -144,3 +144,4 @@ If you uploaded the earlier `hardware/element14-bom.csv` and saw a total over $1
 6. **Hookup wire and jumper kits dropped** (no good element14 hobbyist option); recommended as buy-locally items.
 7. **Resistor value labels corrected**: my earlier labels were off by one decade. The order codes themselves were always right; only the descriptions had been mislabeled.
 8. **CSV now uses Order Code as the primary identifier** rather than relying on MPN matching, which removes ambiguity in the BOM tool.
+9. **MKT cap order codes re-pinned to the cheaper Min-10 Each variants** after uploading the CSV and seeing element14 offer two SKUs per WIMA MPN. The 10 nF moved from `1006017` (tiered $0.587 at 10+) to `100601701` (flat $0.348), and the 47 nF moved from `1006024` (tiered $0.388) to `100602401` (flat $0.2815). Same part, different element14 packaging SKU.
