@@ -26,13 +26,15 @@ Release/
 *.o
 *.d
 
-# .NET / C# (when analysis app lands)
+# .NET / C# (analysis/ host)
 *.user
 *.suo
 [Bb]in/
 [Oo]bj/
 packages/
 .vs/
+*.csproj.user
+TestResults/
 
 # Python (tools/ host package)
 __pycache__/

@@ -1,10 +1,8 @@
 # tinychaos
 
-A hardware random number generator that captures avalanche-breakdown noise from a reverse-biased zener diode, digitises it on an STM32 NUCLEO-H753ZI, streams framed binary packets to a macOS host, and analyses them with a Python toolchain.
+A hardware random number generator that captures avalanche-breakdown noise from a reverse-biased zener diode, digitises it on an STM32 NUCLEO-H753ZI, streams framed binary packets to a host, and analyses them. Two host implementations ship in this repo, sharing the same wire protocol byte-for-byte: a Python toolchain (preferred on macOS / Linux) and a .NET 8 C# toolchain (preferred on Windows, also runs cross-platform).
 
 Every stage of the pipeline is observable. There is no manual hex editing, no ASCII UART dump format, no opaque transport. The host parser detects CRC failures, counts dropped packets, recovers from corruption, and reports two independent sample-rate estimates.
-
-The previous C# Avalonia plan has been retired. The host stack is now Python only.
 
 ## Status
 
@@ -14,13 +12,15 @@ The previous C# Avalonia plan has been retired. The host stack is now Python onl
 | Design docs                                | Done. See [docs/](docs/).                          |
 | Authoritative pipeline doc                 | Done. See [docs/ENTROPY_CAPTURE_PIPELINE.md](docs/ENTROPY_CAPTURE_PIPELINE.md). |
 | Host Python package and CLI                | Done. See [tools/](tools/).                        |
-| Host test suite (68 tests, pytest)         | Passing.                                           |
-| Firmware portable protocol module (C)      | Done. Verified byte-identical to Python reference. |
+| Host Python test suite (68 tests, pytest)  | Passing.                                           |
+| Host C# .NET 8 solution and CLI            | Done. See [analysis/](analysis/).                  |
+| Host C# test suite (xUnit)                 | Code written; tests run by anyone with the .NET 8 SDK via `dotnet test`. |
+| Firmware portable protocol module (C)      | Done. Verified byte-identical to Python and C# references. |
 | Firmware on-host self-test                 | Passing. `make -C firmware test`.                  |
 | Firmware transport modules (USB CDC, UART) | Implemented. Awaiting CubeMX project generation.   |
 | Firmware ADC and DMA capture               | Skeleton present in `main_skeleton.c`; full integration after CubeMX. |
-| Live plotting (matplotlib)                 | Done. `tinychaos.plotting`, optional `plot` extra. CLI degrades cleanly if absent. |
-| Offline analysis (rolling, Z-score, FFT)   | Done. `tinychaos.analysis`. CLI `--fft` wired end-to-end. |
+| Live plotting (matplotlib, Python only)    | Done. `tinychaos.plotting`, optional `plot` extra. CLI degrades cleanly if absent. |
+| Offline analysis (rolling, Z-score, FFT)   | Done in Python (`tinychaos.analysis`). C# v1 is CLI-only; capture once with either host and analyse later. |
 
 ## What you can do right now (no hardware required)
 
@@ -32,7 +32,7 @@ The next section walks through every command, in order.
 
 ## Step-by-step setup and verification
 
-Tested on macOS. Substitute the obvious equivalents for Linux. Windows is not a supported target for the host tools in v1.
+The instructions below cover both host implementations. The Python steps were tested on macOS; the C# steps work on Windows, macOS, and Linux. If you only care about one host, skip the steps for the other.
 
 ### 0. Clone
 
@@ -110,6 +110,32 @@ head -5 /tmp/tinychaos-demo.csv
 ```
 
 Expected: a summary line showing 20 packets, 0 bad CRC, 0 drops, 160 samples, and a CSV with header `host_time,packet_seq,stm32_time_us,sample_index,channel_index,adc_value,validation_label`.
+
+### 4a. (Alternative or in addition) C# host setup
+
+If you are on Windows, or you prefer .NET, you can use the C# host instead of (or alongside) the Python one. It speaks the same wire protocol byte-for-byte.
+
+Prerequisites:
+
+- Windows: install via `winget install Microsoft.DotNet.SDK.8` or from [dot.net](https://dot.net/).
+- macOS: `brew install --cask dotnet-sdk`.
+- Linux: follow distro instructions at [learn.microsoft.com/dotnet](https://learn.microsoft.com/dotnet/core/install/linux).
+
+Confirm: `dotnet --version` should print 8.0 or newer.
+
+Build, test, and smoke-test against the same synthetic capture file you generated for the Python CLI in step 4:
+
+```
+cd analysis
+dotnet restore
+dotnet build -c Release
+dotnet test -c Release
+dotnet run --project src/TinyChaos.Host -c Release -- --replay /tmp/tinychaos-demo.bin --csv /tmp/tinychaos-demo-cs.csv --quiet
+```
+
+Expected: the .NET test suite passes (CRC known-answers, packet round-trips, byte-layout assertions, framer corruption recovery, sequence-gap handling, chunk-size invariance), and the replay CLI produces a Capture summary identical in shape to the Python one and a CSV with the same column schema.
+
+See [analysis/README.md](analysis/README.md) for project layout, prerequisites, live-capture flags, and the cross-implementation parity test.
 
 ### 5. Run the firmware on-host self-test
 
@@ -302,6 +328,11 @@ tinychaos/
 cd tools && python3 -m venv .venv && source .venv/bin/activate
 pip install -e .[dev,plot]
 pytest
+
+# C# host stack
+cd ../analysis
+dotnet restore && dotnet build -c Release
+dotnet test -c Release
 
 # Firmware on-host self-test
 cd ../firmware
