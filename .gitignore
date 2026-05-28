@@ -51,3 +51,9 @@ build-test/
 *.bak
 *.kicad_pcb-bak
 fp-info-cache
+
+# Sample captures intentionally tracked: re-include them after the
+# firmware-section *.bin catch-all above. Without these negations every
+# .bin sample under samples/ would be silently ignored.
+!samples/
+!samples/*.bin

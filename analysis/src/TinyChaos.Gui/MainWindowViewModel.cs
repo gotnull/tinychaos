@@ -20,8 +20,39 @@ namespace TinyChaos.Gui;
 /// </summary>
 public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 {
-    private static readonly string DefaultSamplesDirectory =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "tinychaos-samples");
+    private static readonly string DefaultSamplesDirectory = ResolveDefaultSamplesDirectory();
+
+    /// <summary>
+    /// Find the canonical samples directory. Priority:
+    /// 1. The TINYCHAOS_SAMPLES environment variable, if it points at an
+    ///    existing directory.
+    /// 2. Walk up from the executable directory looking for a folder named
+    ///    <c>samples</c> sitting alongside a <c>.git</c> entry. This finds
+    ///    the in-repo samples folder during development and in checkouts.
+    /// 3. Fall back to <c>~/tinychaos-samples</c>, which the GUI will
+    ///    create on first run.
+    /// </summary>
+    private static string ResolveDefaultSamplesDirectory()
+    {
+        var env = Environment.GetEnvironmentVariable("TINYCHAOS_SAMPLES");
+        if (!string.IsNullOrEmpty(env) && Directory.Exists(env)) return env;
+
+        var dir = AppContext.BaseDirectory;
+        for (int i = 0; i < 10 && !string.IsNullOrEmpty(dir); i++)
+        {
+            var samples = Path.Combine(dir, "samples");
+            var gitEntry = Path.Combine(dir, ".git");
+            if (Directory.Exists(samples) && (Directory.Exists(gitEntry) || File.Exists(gitEntry)))
+            {
+                return samples;
+            }
+            dir = Path.GetDirectoryName(dir);
+        }
+
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            "tinychaos-samples");
+    }
 
     private readonly CaptureService _capture;
     private readonly DispatcherTimer _uiTimer;
