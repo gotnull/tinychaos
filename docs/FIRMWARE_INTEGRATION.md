@@ -158,9 +158,21 @@ After you have made the firmware change, before you even flash:
 
 If `bad_crc` is going up: check your `time_us` is monotonic and your `seq` is incrementing once per packet. If `drops` is going up but `bad_crc` stays at zero: your USB queue is overflowing, copy in [usb_stream.c](../firmware/Core/Src/usb_stream.c) and route through `usb_stream_send` instead of `CDC_Transmit_FS` directly.
 
+## Different MCU? Same story.
+
+The protocol module is plain C99 with no HAL dependencies, so it ports unchanged to anything with a C toolchain. The repo already ships one alternative: [../firmware-esp32s3/](../firmware-esp32s3/), a PlatformIO project for the Waveshare ESP32-S3 R8 OPI board (same family used by rsvpnano). It does the same job using Arduino-ESP32 v3.x's `analogContinuous` API for DMA-backed sampling, and adds WiFi + ArduinoOTA + ElegantOTA so once the device is on your network you can push new firmware over the air rather than re-cabling.
+
+The structure inside `firmware-esp32s3/` mirrors the integration pattern this doc describes:
+
+- `lib/tinychaos_protocol/` contains the same three portable files (`entropy_config.h`, `entropy_protocol.h`, `entropy_protocol.c`). They are unmodified copies; treat them as the single source of truth in `firmware/Core/`.
+- `src/main.cpp` is the ESP-side of the integration: it sets up the ADC, calls `entropy_packet_encode` on each batch, and writes to `Serial` (which is USB CDC on the S3 because `ARDUINO_USB_MODE=1 + ARDUINO_USB_CDC_ON_BOOT=1`).
+
+If you have an ESP32-S3 board already (rsvpnano-style hardware, any Waveshare or other ESP32-S3 dev kit), `firmware-esp32s3/README.md` walks you from `pio run -t upload` to seeing live samples in the GUI in about three minutes. That is the fastest "see something work" path against real hardware in this repo.
+
 ## Summary
 
 - Your firmware stays. Our `firmware/` is mostly empty scaffolding plus one real piece: the protocol module.
 - Copy three files (`entropy_config.h`, `entropy_protocol.h`, `entropy_protocol.c`) into your project.
 - Wrap each DMA-callback `CDC_Transmit_FS` call with one `entropy_packet_encode` call.
 - That is the entire integration. Spike encoding plan continues to work on top of the same wire format.
+- Different MCU family? Same approach. See [../firmware-esp32s3/](../firmware-esp32s3/) for an ESP32-S3 example.

@@ -1,0 +1,15 @@
+.pio/
+.vscode/
+.pioenvs/
+.piolibdeps/
+.clang_complete
+.gcc-flags.json
+*.o
+*.bin
+*.elf
+
+# WiFi / OTA credentials. Track the .template file, never the real one.
+src/wifi_config.h
+
+# PlatformIO / ESP-IDF auto-generated component manifest
+src/idf_component.yml
