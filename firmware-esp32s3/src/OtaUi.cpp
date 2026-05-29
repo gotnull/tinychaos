@@ -238,6 +238,19 @@ void OtaUi::activateSelection() {
   switch (a) {
     case Action::CheckForUpdate: {
       state_ = State::Checking;
+      // WiFi is off during normal streaming; bring it up on demand. The
+      // scan/connect generates ROM ets_printf noise on UART0, but that only
+      // happens here, when the user explicitly asks to check for updates.
+      if (!wifiConnected_) {
+        renderMessage("CHECKING", "CONNECTING WIFI",
+                      wifiSsid_.isEmpty() ? "" : wifiSsid_);
+        if (!wifiConnectFn_ || !wifiConnectFn_()) {
+          lastErrorShown_ = "WIFI CONNECT FAILED";
+          state_          = State::UpdateFailed;
+          return;
+        }
+        wifiConnected_ = true;
+      }
       renderMessage("CHECKING", "FETCHING LATEST RELEASE",
                     OtaUpdater::repoSlug());
       const bool ok = updater_.checkLatest();
@@ -258,6 +271,16 @@ void OtaUi::activateSelection() {
       return;
     }
     case Action::ApplyUpdate: {
+      if (!wifiConnected_) {
+        renderMessage("APPLYING", "CONNECTING WIFI",
+                      wifiSsid_.isEmpty() ? "" : wifiSsid_);
+        if (!wifiConnectFn_ || !wifiConnectFn_()) {
+          lastErrorShown_ = "WIFI CONNECT FAILED";
+          state_          = State::UpdateFailed;
+          return;
+        }
+        wifiConnected_ = true;
+      }
       state_ = State::Downloading;
       renderProgress();
       const bool ok = updater_.applyUpdate();

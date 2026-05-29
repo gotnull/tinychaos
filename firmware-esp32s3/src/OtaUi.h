@@ -14,6 +14,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <functional>
 #include <vector>
 
 #include "OtaUpdater.h"
@@ -46,6 +47,12 @@ class OtaUi {
   // Status text caller sets once it knows the WiFi state. The UI doesn't try
   // to call WiFi.begin itself; the WiFi connection is owned by main.cpp.
   void setWifiState(bool connected, const String &ssid, const String &ip);
+
+  // Callback that brings WiFi up on demand and blocks until connected (or
+  // times out), returning the result. main.cpp supplies this; the UI calls
+  // it only from the Check-for-update / Apply paths so WiFi stays off (and
+  // the packet stream stays clean) during normal streaming.
+  void setWifiConnectFn(std::function<bool()> fn) { wifiConnectFn_ = std::move(fn); }
 
   // True if a tap arrived since the last call. Cleared on read so main.cpp
   // can pass the flag once to the next outbound packet's FLAGS byte.
@@ -95,4 +102,6 @@ class OtaUi {
 
   uint32_t lastCheckMs_     = 0;
   uint32_t lastProgressMs_  = 0;
+
+  std::function<bool()> wifiConnectFn_;
 };
