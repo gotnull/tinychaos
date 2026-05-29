@@ -22,13 +22,13 @@ void OtaUi::setWifiState(bool connected, const String &ssid, const String &ip) {
   wifiConnected_ = connected;
   wifiSsid_      = ssid;
   wifiIp_        = ip;
-  if (connected) {
-    if (state_ == State::Boot || state_ == State::WifiConnecting ||
-        state_ == State::WifiFailed) {
-      state_ = State::Idle;
-    }
-  } else if (state_ == State::Boot) {
-    state_ = State::WifiConnecting;
+  // WiFi is on-demand now (off during normal streaming), so boot goes
+  // straight to the menu — we do NOT sit in a "connecting to WiFi" screen.
+  // The actual connect happens synchronously inside activateSelection()
+  // (Check-for-update / Apply), which renders its own "CONNECTING WIFI"
+  // status. Here we just leave Boot for Idle on the first status report.
+  if (state_ == State::Boot) {
+    state_ = State::Idle;
   }
 }
 

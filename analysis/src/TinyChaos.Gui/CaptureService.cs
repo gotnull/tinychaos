@@ -21,7 +21,11 @@ public sealed record CaptureSnapshot(
     long Samples,
     double Stm32RateHz,
     double HostRateHz,
-    RollingStatsSnapshot[] ChannelStats);
+    RollingStatsSnapshot[] ChannelStats,
+    // True if at least one packet with the device-tap flag (FLAGS bit 0)
+    // arrived since the previous Snapshot(). Latched on the read thread and
+    // cleared on read so the UI sees each tap exactly once.
+    bool DeviceTapped);
 
 public sealed record RollingStatsSnapshot(long Count, double Mean, double Std, double Min, double Max);
 
@@ -38,6 +42,9 @@ public sealed class CaptureService : IDisposable
 
     private readonly object _lock = new();
     private long _packets, _badCrc, _badVersion, _drops, _resyncBytes, _samples;
+    // Latched when a packet carries the device-tap flag (FLAGS bit 0); read
+    // and cleared by Snapshot() so the GUI can react to each tap once.
+    private bool _tapPending;
     private DropTracker _dropTracker = new();
     private RateEstimator _rate = new();
     private ChannelStats _channelStats;
@@ -131,6 +138,7 @@ public sealed class CaptureService : IDisposable
         lock (_lock)
         {
             _packets = _badCrc = _badVersion = _drops = _resyncBytes = _samples = 0;
+            _tapPending = false;
             _dropTracker = new DropTracker();
             _rate = new RateEstimator();
             _channelStats = new ChannelStats(_channelCount);
@@ -192,6 +200,8 @@ public sealed class CaptureService : IDisposable
                 var s = _channelStats.Get(ch);
                 perChannel[ch] = new RollingStatsSnapshot(s.Count, s.Mean, s.Std, s.Min, s.Max);
             }
+            bool tapped = _tapPending;
+            _tapPending = false;
             return new CaptureSnapshot(
                 Packets: _packets,
                 BadCrc: _badCrc,
@@ -201,7 +211,8 @@ public sealed class CaptureService : IDisposable
                 Samples: _samples,
                 Stm32RateHz: _rate.Stm32RateHz() ?? 0.0,
                 HostRateHz: _rate.HostRateHz() ?? 0.0,
-                ChannelStats: perChannel);
+                ChannelStats: perChannel,
+                DeviceTapped: tapped);
         }
     }
 
@@ -247,6 +258,10 @@ public sealed class CaptureService : IDisposable
                 {
                     _packets++;
                     _samples += p.Header.Count;
+                    // FLAGS bit 0 = the user tapped the device screen. Latch
+                    // it so the GUI can surface each tap (e.g. jump to the
+                    // live view) on its next poll.
+                    if ((p.Header.Flags & 0x01) != 0) _tapPending = true;
                     _dropTracker.Observe(p.Header.Seq);
                     _drops = _dropTracker.Drops;
                     _rate.Observe(p.Header.TimeUs, p.Header.Count, _wall!.Elapsed.TotalSeconds);

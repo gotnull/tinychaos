@@ -475,6 +475,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         ResyncText = s.ResyncBytes >= 1024 ? $"{s.ResyncBytes / 1024.0:F1} KB" : $"{s.ResyncBytes} B";
         Stm32RateText = $"{s.Stm32RateHz:F1} Hz";
         HostRateText = $"{s.HostRateHz:F1} Hz";
+
+        // Device-side screen tap: jump to the Live Capture tab so the user
+        // sees the waveform immediately. The flag is latched per packet on
+        // the read thread and cleared by Snapshot(), so this fires once per
+        // tap rather than every tick.
+        if (s.DeviceTapped)
+        {
+            ActiveTabIndex = 0;
+        }
     }
 
     private static void EnsureDirectoryExists(string path)
