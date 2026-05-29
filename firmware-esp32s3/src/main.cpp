@@ -11,17 +11,18 @@
 // vertically to scroll. Any tap also raises FLAGS bit 0 on the next
 // outgoing packet so the host-side GUI can switch tabs to its live view.
 //
-// SERIAL TRANSPORT CAVEAT (Waveshare ESP32-S3 R8 OPI specific):
-// UART0 / CH343 is the only USB endpoint on this board, AND the framework's
-// console driver claims UART0 at boot using raw-IO writes. Installing the
-// proper uart_driver_install path conflicts with that and kills all output.
-// We compromise: write through stdout (fwrite, the same path the framework
-// uses) and silence framework logs (esp_log_level_set + WiFi is the only
-// remaining noise source). Some packets still get corrupted when concurrent
-// stdout writes interleave; the host-side Framer recovers via MAGIC
-// resync. ~17/78 pkts/sec land cleanly; the rest are dropped/resynced.
-// A clean fix needs CONFIG_ESP_CONSOLE_NONE in sdkconfig or a USB pigtail
-// to the ESP32-S3 native USB pins.
+// SERIAL TRANSPORT (Waveshare ESP32-S3 R8 OPI specific):
+// UART0 / CH343 is the only USB endpoint on this board. The ESP-IDF console
+// is disabled at the sdkconfig level (CONFIG_ESP_CONSOLE_NONE, see
+// platformio.ini) so the framework no longer writes ESP_LOG / ROM printf /
+// WiFi ets_printf to UART0. That leaves us free to install our OWN uart
+// driver on UART0 and be the sole writer, so 528-byte binary packets land
+// intact on the wire (no interleaved console text corrupting CRCs).
+//
+// Consequence: printf/Serial no longer reach the host. Status/diagnostics
+// live on the on-device display (OtaUi) instead. If you need a text byte on
+// the wire for debugging, send it via uart0_write — it shares the same
+// driver as the packet stream and is serialized per call.
 //
 // The wire format is byte-for-byte identical to the STM32 firmware in
 // ../firmware/, the Python host (tools/), and the C# host (analysis/).
@@ -30,7 +31,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <WiFi.h>
-#include <esp_log.h>
+#include <driver/uart.h>
 
 extern "C"
 {
@@ -45,6 +46,15 @@ extern "C"
 #include "input/ButtonHandler.h"
 #include "input/TouchHandler.h"
 #include "wifi_config.h"
+
+// The Arduino core's logging macros are linked with -Wl,--wrap=log_printf,
+// which expects a __wrap_log_printf definition. In the from-source hybrid
+// build that custom_sdkconfig triggers, that symbol is left undefined and
+// the link fails (chip-debug-report.cpp references it). We provide a no-op
+// here: it satisfies the linker AND discards any framework log text that
+// would otherwise have to go somewhere, keeping it off every UART. (Real
+// ESP_LOG output via the console still routes to UART1 per sdkconfig.)
+extern "C" int __wrap_log_printf(const char * /*fmt*/, ...) { return 0; }
 
 // ---- Capture parameters ---------------------------------------------------
 
@@ -75,14 +85,34 @@ static OtaUi         gUi(gDisplay, gOta, gBootButton, gTouch);
 static uint32_t gLastWifiPollMs        = 0;
 static bool     gWifiReportedConnected = false;
 
+// UART0 is owned exclusively by us (ESP-IDF console disabled in sdkconfig).
+// uart_driver_install gives an 8 KB TX ring drained by IRQ; uart_write_bytes
+// copies into it and BLOCKS on backpressure rather than dropping, so packet
+// boundaries stay intact at the sustained 41 KB/s rate.
+static constexpr uart_port_t TINYCHAOS_UART = UART_NUM_0;
+static constexpr int         TINYCHAOS_UART_TX_PIN = 43;
+static constexpr int         TINYCHAOS_UART_RX_PIN = 44;
+
+static void uart0_begin() {
+  uart_config_t cfg = {};
+  cfg.baud_rate  = 921600;
+  cfg.data_bits  = UART_DATA_8_BITS;
+  cfg.parity     = UART_PARITY_DISABLE;
+  cfg.stop_bits  = UART_STOP_BITS_1;
+  cfg.flow_ctrl  = UART_HW_FLOWCTRL_DISABLE;
+  cfg.source_clk = UART_SCLK_DEFAULT;
+  uart_param_config(TINYCHAOS_UART, &cfg);
+  uart_set_pin(TINYCHAOS_UART, TINYCHAOS_UART_TX_PIN, TINYCHAOS_UART_RX_PIN,
+               UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+  uart_driver_install(TINYCHAOS_UART, /*rx*/256, /*tx*/8192, 0, nullptr, 0);
+}
+
 static inline void uart0_write(const uint8_t *data, size_t n) {
-  fwrite(data, 1, n, stdout);
-  fflush(stdout);
+  uart_write_bytes(TINYCHAOS_UART, reinterpret_cast<const char *>(data), n);
 }
 
 static inline void uart0_print(const char *s) {
-  fputs(s, stdout);
-  fflush(stdout);
+  uart_write_bytes(TINYCHAOS_UART, s, strlen(s));
 }
 
 static void IRAM_ATTR onAdcBatchReady() { adc_batch_ready = true; }
@@ -127,12 +157,9 @@ static void pollWifiForUi(uint32_t nowMs)
 
 void setup()
 {
-  // Use framework's existing UART0 console (raw IO). setvbuf(_IONBF)
-  // disables stdout line buffering so binary packet writes containing
-  // random 0x0A bytes don't trigger mid-packet flushes. Silence framework
-  // ESP_LOG so it doesn't interleave with packet bytes.
-  setvbuf(stdout, NULL, _IONBF, 0);
-  esp_log_level_set("*", ESP_LOG_NONE);
+  // ESP-IDF console is disabled in sdkconfig, so install our own UART0
+  // driver as the single canonical writer on the CH343 link.
+  uart0_begin();
   delay(200);
 
   char boot_line[96];

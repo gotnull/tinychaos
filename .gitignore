@@ -63,3 +63,6 @@ fp-info-cache
 !samples/floating_50hz.bin
 !samples/sine_1khz.bin
 !samples/zener_synthetic.bin
+
+# Claude Code harness runtime locks
+.claude/scheduled_tasks.lock
