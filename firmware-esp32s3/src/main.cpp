@@ -2,15 +2,26 @@
 //
 // Reads one analog input continuously (ADC1_CH0 = GPIO 1 by default), wraps
 // the samples in the tinychaos wire-protocol frame, and streams the frames
-// to the host over USB CDC. WiFi + ArduinoOTA + on-device GitHub-releases
-// OTA on top so you can push new firmware over the air once the device is
-// on your network.
+// to the host through UART0 / CH343. WiFi + ArduinoOTA + on-device
+// GitHub-releases OTA on top so you can push new firmware over the air.
 //
-// The on-device UI uses the same renderer (PSRAM virtual frame, native-
-// stripe DMA flush, 5x7 TinyGlyph font) as rsvpnano so menus are pixel-
-// faithful to the rsvpnano look. Single-button nav on the BOOT button:
-//   short press  : move selection down (wraps)
-//   long  press  : activate the selected item
+// On-device UI uses the same renderer (PSRAM virtual frame, native-stripe
+// DMA flush, 5x7 TinyGlyph font) as rsvpnano so menus are pixel-faithful
+// to the rsvpnano look. Touch nav: tap a menu row to activate, swipe
+// vertically to scroll. Any tap also raises FLAGS bit 0 on the next
+// outgoing packet so the host-side GUI can switch tabs to its live view.
+//
+// SERIAL TRANSPORT CAVEAT (Waveshare ESP32-S3 R8 OPI specific):
+// UART0 / CH343 is the only USB endpoint on this board, AND the framework's
+// console driver claims UART0 at boot using raw-IO writes. Installing the
+// proper uart_driver_install path conflicts with that and kills all output.
+// We compromise: write through stdout (fwrite, the same path the framework
+// uses) and silence framework logs (esp_log_level_set + WiFi is the only
+// remaining noise source). Some packets still get corrupted when concurrent
+// stdout writes interleave; the host-side Framer recovers via MAGIC
+// resync. ~17/78 pkts/sec land cleanly; the rest are dropped/resynced.
+// A clean fix needs CONFIG_ESP_CONSOLE_NONE in sdkconfig or a USB pigtail
+// to the ESP32-S3 native USB pins.
 //
 // The wire format is byte-for-byte identical to the STM32 firmware in
 // ../firmware/, the Python host (tools/), and the C# host (analysis/).
@@ -19,6 +30,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <WiFi.h>
+#include <esp_log.h>
 
 extern "C"
 {
@@ -46,6 +58,12 @@ static uint8_t  packet_out[ENTROPY_PACKET_MAX_BYTES];
 static uint16_t sample_buf[SAMPLES_PER_BATCH];
 static uint32_t seq = 0;
 
+// Wire-protocol FLAGS bit 0 = "user tapped the device screen since the
+// previous packet". The host-side GUI watches this bit on every header to
+// auto-switch to its live-waveform view. Bit reuses the protocol's
+// previously-reserved FLAGS byte; older parsers ignore it.
+static constexpr uint8_t ENTROPY_FLAG_USER_TAP = 0x01;
+
 static volatile bool adc_batch_ready = false;
 
 static Display       gDisplay;
@@ -54,15 +72,20 @@ static ButtonHandler gBootButton(BoardConfig::PIN_BOOT_BUTTON);
 static TouchHandler  gTouch;
 static OtaUi         gUi(gDisplay, gOta, gBootButton, gTouch);
 
-static uint32_t gLastWifiPollMs = 0;
+static uint32_t gLastWifiPollMs        = 0;
 static bool     gWifiReportedConnected = false;
 
-static void IRAM_ATTR onAdcBatchReady()
-{
-  // ISR. Keep tiny. The main loop polls adc_batch_ready and calls
-  // analogContinuousRead() to actually pick up the data.
-  adc_batch_ready = true;
+static inline void uart0_write(const uint8_t *data, size_t n) {
+  fwrite(data, 1, n, stdout);
+  fflush(stdout);
 }
+
+static inline void uart0_print(const char *s) {
+  fputs(s, stdout);
+  fflush(stdout);
+}
+
+static void IRAM_ATTR onAdcBatchReady() { adc_batch_ready = true; }
 
 // ---- Setup helpers --------------------------------------------------------
 
@@ -79,13 +102,13 @@ static void setupAdc()
 static void startWifi()
 {
   if (sizeof(WIFI_SSID) <= 1) {
-    Serial0.println("[wifi] SSID empty in wifi_config.h, skipping");
+    uart0_print("[wifi] SSID empty in wifi_config.h, skipping\n");
     return;
   }
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(TINYCHAOS_HOSTNAME);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial0.printf("[wifi] connecting to %s\n", WIFI_SSID);
+  uart0_print("[wifi] begin\n");
 }
 
 static void pollWifiForUi(uint32_t nowMs)
@@ -95,11 +118,6 @@ static void pollWifiForUi(uint32_t nowMs)
   const bool connected = (WiFi.status() == WL_CONNECTED);
   if (connected != gWifiReportedConnected) {
     gWifiReportedConnected = connected;
-    if (connected) {
-      Serial0.printf("[wifi] connected, ip=%s\n", WiFi.localIP().toString().c_str());
-    } else {
-      Serial0.println("[wifi] disconnected");
-    }
   }
   gUi.setWifiState(connected, String(WIFI_SSID),
                    connected ? WiFi.localIP().toString() : String(""));
@@ -109,39 +127,42 @@ static void pollWifiForUi(uint32_t nowMs)
 
 void setup()
 {
-  // Explicit RX/TX pins (Waveshare ESP32-S3 R8 OPI wires CH343 to GPIO 44/43,
-  // which are also the ESP32-S3's default UART0 pins — being explicit makes
-  // this independent of framework defaults).
-  Serial0.begin(921600, SERIAL_8N1, /*rx*/44, /*tx*/43);
+  // Use framework's existing UART0 console (raw IO). setvbuf(_IONBF)
+  // disables stdout line buffering so binary packet writes containing
+  // random 0x0A bytes don't trigger mid-packet flushes. Silence framework
+  // ESP_LOG so it doesn't interleave with packet bytes.
+  setvbuf(stdout, NULL, _IONBF, 0);
+  esp_log_level_set("*", ESP_LOG_NONE);
   delay(200);
-  Serial0.printf("\n\n[boot] tinychaos esp32-s3, build=%s\n", TINYCHAOS_BUILD_TAG);
-  Serial0.flush();
+
+  char boot_line[96];
+  int n = snprintf(boot_line, sizeof(boot_line),
+                   "\n\n[boot] tinychaos esp32-s3, build=%s\n",
+                   TINYCHAOS_BUILD_TAG);
+  uart0_write(reinterpret_cast<const uint8_t *>(boot_line), n);
 
   gBootButton.begin();
 
   if (!gDisplay.begin()) {
-    Serial0.println("[display] begin failed (no PSRAM?); UI disabled");
+    uart0_print("[display] begin failed (no PSRAM?); UI disabled\n");
   } else {
-    Serial0.println("[display] ready");
+    uart0_print("[display] ready\n");
   }
 
-  // Touch lives on its own I2C bus (PIN_TOUCH_SDA/SCL). The Display.cpp
-  // transpose uses the "uiRotated_=false" mapping, so the touch handler
-  // must do the same axis convention (mappedX/mappedY direct) to land
-  // touches on the correct row.
   Wire.begin(BoardConfig::PIN_TOUCH_SDA, BoardConfig::PIN_TOUCH_SCL);
   gTouch.setUiRotated(false);
   gTouch.begin();
 
   gUi.begin();
-
   startWifi();
 
   setupAdc();
-  Serial0.printf("[adc] continuous on GPIO%u @ %u Hz, %u samples/batch\n",
-                ADC_PIN, SAMPLES_PER_S, (unsigned)SAMPLES_PER_BATCH);
-  Serial0.println("[boot] streaming packets to UART0 (CH343)");
-  Serial0.flush();
+  char adc_line[160];
+  int an = snprintf(adc_line, sizeof(adc_line),
+                    "[adc] continuous on GPIO%u @ %u Hz, %u samples/batch\n"
+                    "[boot] streaming packets to UART0 (CH343)\n",
+                    ADC_PIN, SAMPLES_PER_S, (unsigned)SAMPLES_PER_BATCH);
+  uart0_write(reinterpret_cast<const uint8_t *>(adc_line), an);
 }
 
 static void pumpAdc()
@@ -162,7 +183,13 @@ static void pumpAdc()
                                          seq++, time_us,
                                          sample_buf, SAMPLES_PER_BATCH);
   if (n > 0) {
-    Serial0.write(packet_out, n);
+    if (gUi.consumeTapEvent()) {
+      packet_out[3] |= ENTROPY_FLAG_USER_TAP;
+      const uint16_t crc = crc16_ccitt_false(&packet_out[2], n - 4);
+      packet_out[n - 2] = (uint8_t)(crc & 0xFF);
+      packet_out[n - 1] = (uint8_t)(crc >> 8);
+    }
+    uart0_write(packet_out, n);
   }
   // Do NOT call analogContinuousStart() here — the v3 continuous-ADC API
   // auto-feeds batches once Started; restarting per batch wedges the driver.
@@ -171,16 +198,7 @@ static void pumpAdc()
 void loop()
 {
   pumpAdc();
-
   const uint32_t now = millis();
   pollWifiForUi(now);
   gUi.tick(now);
-
-  // Heartbeat: prove loop() runs even before packets start flowing. Removes
-  // itself from the timeline once the magic-byte stream is up.
-  static uint32_t lastHeartbeatMs = 0;
-  if (now - lastHeartbeatMs >= 1000) {
-    lastHeartbeatMs = now;
-    Serial0.write('.');
-  }
 }

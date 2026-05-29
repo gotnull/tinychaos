@@ -12,6 +12,12 @@ void OtaUi::begin() {
   renderMessage("TINYCHAOS", "BOOTING", "");
 }
 
+bool OtaUi::consumeTapEvent() {
+  const bool had = tapPending_;
+  tapPending_ = false;
+  return had;
+}
+
 void OtaUi::setWifiState(bool connected, const String &ssid, const String &ip) {
   wifiConnected_ = connected;
   wifiSsid_      = ssid;
@@ -93,14 +99,19 @@ void OtaUi::handleTouch(uint32_t nowMs) {
   TouchEvent ev;
   if (!touch_.poll(ev)) return;
 
-  // Only react during interactive states; ignore touches mid-download etc.
-  if (state_ != State::Idle && state_ != State::UpToDate &&
-      state_ != State::UpdateAvailable && state_ != State::UpdateFailed) {
-    return;
+  // Any tap (anywhere on the screen) raises a tap event that main.cpp will
+  // forward to the host via the next outgoing packet's FLAGS byte. The
+  // host-side GUI uses this to auto-switch to its waveform tab.
+  if (ev.phase == TouchPhase::End) {
+    tapPending_ = true;
   }
 
   if (state_ == State::UpdateFailed) {
     if (ev.phase == TouchPhase::End) state_ = State::Idle;
+    return;
+  }
+  if (state_ != State::Idle && state_ != State::UpToDate &&
+      state_ != State::UpdateAvailable && state_ != State::Checking) {
     return;
   }
 
@@ -116,15 +127,15 @@ void OtaUi::handleTouch(uint32_t nowMs) {
   const int dy = static_cast<int>(ev.y) - static_cast<int>(touchStartY_);
   constexpr int kSwipeThresholdPx = 30;
 
-  // Swipe vertically to move the selection. Tap (no significant movement)
-  // snaps selection to the row under the finger and activates it.
+  // Swipe vertically moves the menu selection. A tap (no significant
+  // movement) snaps selection to the row under the finger and activates
+  // it. (The tap-to-host event was already raised above; menu actions
+  // and host signalling are independent.)
   if (dy <= -kSwipeThresholdPx) {
-    // swipe up → next selectable
     selected_ = nextSelectable(selected_ + 1);
     return;
   }
   if (dy >= kSwipeThresholdPx) {
-    // swipe down → previous selectable (cycle backwards)
     if (!menu_.empty()) {
       size_t prev = (selected_ + menu_.size() - 1) % menu_.size();
       for (size_t step = 0; step < menu_.size(); ++step) {

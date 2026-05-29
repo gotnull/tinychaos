@@ -33,8 +33,12 @@ bool OtaUpdater::checkLatest() {
     return false;
   }
 
+  // /releases/latest excludes pre-releases — and our CI workflow publishes
+  // every push to main as a pre-release, so /latest always 404s for us.
+  // /releases?per_page=1 returns the most recent release (including
+  // pre-releases) wrapped in a JSON array; we pluck the first object.
   const String apiUrl = String("https://api.github.com/repos/") + repoSlug() +
-                        "/releases/latest";
+                        "/releases?per_page=1";
 
   WiFiClientSecure client;
   client.setInsecure();

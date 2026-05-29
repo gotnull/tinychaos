@@ -47,6 +47,10 @@ class OtaUi {
   // to call WiFi.begin itself; the WiFi connection is owned by main.cpp.
   void setWifiState(bool connected, const String &ssid, const String &ip);
 
+  // True if a tap arrived since the last call. Cleared on read so main.cpp
+  // can pass the flag once to the next outbound packet's FLAGS byte.
+  bool consumeTapEvent();
+
   State state() const { return state_; }
 
  private:
@@ -79,6 +83,7 @@ class OtaUi {
 
   uint16_t touchStartY_   = 0;
   bool     touchActive_   = false;
+  bool     tapPending_    = false;   // see consumeTapEvent()
 
   State  state_ = State::Boot;
   String wifiSsid_;
