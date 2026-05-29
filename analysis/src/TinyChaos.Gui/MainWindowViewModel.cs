@@ -203,9 +203,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         AvailablePorts.Clear();
         try
         {
-            foreach (var name in SerialPort.GetPortNames())
+            // SerialPort.GetPortNames() on macOS returns both /dev/tty.* (incoming)
+            // and /dev/cu.* (callout) for every hardware port, plus Bluetooth-Incoming-Port
+            // and debug-console pseudo-ports we never want. Linux mostly returns clean
+            // /dev/ttyACMx / /dev/ttyUSBx. Windows returns COMx. Whitelist the
+            // useful prefixes and drop the rest so the dropdown only shows real ports.
+            var names = SerialPort.GetPortNames();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var raw in names)
             {
-                AvailablePorts.Add(name);
+                if (!IsLikelyUsbSerialPort(raw)) continue;
+                if (!seen.Add(raw)) continue;
+                AvailablePorts.Add(raw);
             }
         }
         catch (Exception ex)
@@ -217,6 +226,41 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             SelectedPort = AvailablePorts[0];
         }
+    }
+
+    /// <summary>Keep only candidate USB serial / virtual COM ports; drop tty.* duplicates,
+    /// Bluetooth pseudo-ports, and macOS debug-console.</summary>
+    private static bool IsLikelyUsbSerialPort(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+
+        // macOS: prefer /dev/cu.* over /dev/tty.*; drop pseudo-ports.
+        if (name.StartsWith("/dev/tty.", StringComparison.Ordinal)) return false;
+        if (name.Contains("Bluetooth", StringComparison.OrdinalIgnoreCase)) return false;
+        if (name.Contains("debug-console", StringComparison.OrdinalIgnoreCase)) return false;
+        if (name.StartsWith("/dev/cu.usbmodem", StringComparison.Ordinal) ||
+            name.StartsWith("/dev/cu.usbserial", StringComparison.Ordinal) ||
+            name.StartsWith("/dev/cu.SLAB_", StringComparison.Ordinal) ||
+            name.StartsWith("/dev/cu.wchusb", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        // Linux: typical USB serial endpoints.
+        if (name.StartsWith("/dev/ttyACM", StringComparison.Ordinal) ||
+            name.StartsWith("/dev/ttyUSB", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        // Windows: COMx.
+        if (name.StartsWith("COM", StringComparison.OrdinalIgnoreCase) &&
+            name.Length > 3 && char.IsDigit(name[3]))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     [RelayCommand]

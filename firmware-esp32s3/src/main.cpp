@@ -59,15 +59,19 @@ static void setupAdc()
 
 void setup()
 {
-  Serial.begin(921600);
-  // Give the USB CDC enumeration a moment so early prints are visible.
-  delay(500);
-  Serial.printf("\n\n[boot] tinychaos esp32-s3, build=%s\n", TINYCHAOS_BUILD_TAG);
+  // Explicit RX/TX pins (Waveshare ESP32-S3 R8 OPI wires CH343 to GPIO 44/43,
+  // which are also the ESP32-S3's default UART0 pins — being explicit makes
+  // this independent of framework defaults).
+  Serial0.begin(921600, SERIAL_8N1, /*rx*/44, /*tx*/43);
+  delay(200);
+  Serial0.printf("\n\n[boot] tinychaos esp32-s3, build=%s\n", TINYCHAOS_BUILD_TAG);
+  Serial0.flush();
 
   setupAdc();
-  Serial.printf("[adc] continuous on GPIO%u @ %u Hz, %u samples/batch\n",
+  Serial0.printf("[adc] continuous on GPIO%u @ %u Hz, %u samples/batch\n",
                 ADC_PIN, SAMPLES_PER_S, (unsigned)SAMPLES_PER_BATCH);
-  Serial.println("[boot] streaming packets to USB CDC");
+  Serial0.println("[boot] streaming packets to UART0 (CH343)");
+  Serial0.flush();
 }
 
 static void pumpAdc()
@@ -94,7 +98,7 @@ static void pumpAdc()
                                          sample_buf, SAMPLES_PER_BATCH);
   if (n > 0)
   {
-    Serial.write(packet_out, n);
+    Serial0.write(packet_out, n);
   }
 
   // Note: do NOT call analogContinuousStart() here. The Arduino-ESP32 v3
@@ -106,4 +110,14 @@ static void pumpAdc()
 void loop()
 {
   pumpAdc();
+
+  // Heartbeat: prove loop() runs even when pumpAdc returns no data.
+  // Removes itself from the timeline as soon as packets start flowing
+  // (the magic-byte stream is far easier to spot than these dots).
+  static uint32_t lastHeartbeatMs = 0;
+  const uint32_t now = millis();
+  if (now - lastHeartbeatMs >= 500) {
+    lastHeartbeatMs = now;
+    Serial0.write('.');
+  }
 }
