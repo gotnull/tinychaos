@@ -16,6 +16,11 @@ namespace BoardConfig {
 constexpr int PIN_BOOT_BUTTON = 0;
 constexpr int PIN_PWR_BUTTON  = 16;
 
+// AXS15231B touch endpoint is on the secondary I2C bus (NOT the same pins
+// as the panel's QSPI lines). Matches rsvpnano BoardConfig.
+constexpr int PIN_TOUCH_SDA   = 17;
+constexpr int PIN_TOUCH_SCL   = 18;
+
 constexpr int PIN_LCD_CS        = 9;
 constexpr int PIN_LCD_SCLK      = 10;
 constexpr int PIN_LCD_DATA0     = 11;
