@@ -58,6 +58,14 @@ class OtaUi {
   // can pass the flag once to the next outbound packet's FLAGS byte.
   bool consumeTapEvent();
 
+  // Touch-as-signal source. While a finger is down (anywhere, including over
+  // the menu), isTouchLive() is true and touchSampleValue() is the current
+  // touch position mapped to the 12-bit ADC range. main.cpp substitutes this
+  // for the ADC reading so swiping the screen draws a live waveform in the
+  // host GUI even with no entropy source wired to the ADC pin.
+  bool     isTouchLive() const     { return touchLive_; }
+  uint16_t touchSampleValue() const { return touchSampleValue_; }
+
   State state() const { return state_; }
 
  private:
@@ -91,6 +99,8 @@ class OtaUi {
   uint16_t touchStartY_   = 0;
   bool     touchActive_   = false;
   bool     tapPending_    = false;   // see consumeTapEvent()
+  bool     touchLive_         = false;  // finger currently down
+  uint16_t touchSampleValue_  = 0;      // touch position -> 12-bit sample
 
   State  state_ = State::Boot;
   String wifiSsid_;

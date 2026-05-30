@@ -2,6 +2,8 @@
 
 #include <esp_log.h>
 
+#include "board/BoardConfig.h"
+
 namespace {
 constexpr const char *kTag = "OtaUi";
 constexpr uint32_t kLongPressMs = 600;
@@ -98,6 +100,20 @@ void OtaUi::handleTouch(uint32_t nowMs) {
   (void)nowMs;
   TouchEvent ev;
   if (!touch_.poll(ev)) return;
+
+  // Touch-as-signal: while a finger is down (Start/Move), map the X position
+  // along the long screen axis to the full 12-bit ADC range and mark touch
+  // live. main.cpp substitutes this for the ADC sample so a swipe draws a
+  // live waveform in the host GUI. Captured BEFORE the state gating below so
+  // it works even while the menu is up / being navigated.
+  if (ev.touched) {
+    uint32_t v = (uint32_t)ev.x * 4095u /
+                 (uint32_t)(BoardConfig::DISPLAY_WIDTH - 1);
+    touchSampleValue_ = (uint16_t)(v > 4095u ? 4095u : v);
+    touchLive_ = true;
+  } else if (ev.phase == TouchPhase::End) {
+    touchLive_ = false;
+  }
 
   // Any tap (anywhere on the screen) raises a tap event that main.cpp will
   // forward to the host via the next outgoing packet's FLAGS byte. The

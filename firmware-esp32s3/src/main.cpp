@@ -232,6 +232,13 @@ static void pumpAdc()
                                             &out_len, 0);
     if (r != ESP_OK || out_len == 0) break;
 
+    // Touch-as-signal override: while a finger is on the screen, substitute
+    // the touch position for the ADC reading so swiping draws a live waveform
+    // in the host GUI (works with no entropy source wired up). Real ADC
+    // resumes the instant the finger lifts.
+    const bool     injectTouch = gUi.isTouchLive();
+    const uint16_t touchVal    = gUi.touchSampleValue();
+
     const size_t convs = out_len / SOC_ADC_DIGI_RESULT_BYTES;
     for (size_t i = 0; i < convs; i++) {
       const adc_digi_output_data_t *p =
@@ -240,7 +247,8 @@ static void pumpAdc()
       // TYPE2 frame (ESP32-S3): 12-bit data + 4-bit channel. Skip the rare
       // out-of-pattern conversion the controller can emit on the first frame.
       if (p->type2.channel != ADC_CHANNEL_0) continue;
-      sample_buf[wave_fill++] = (uint16_t)p->type2.data;
+      sample_buf[wave_fill++] =
+          injectTouch ? touchVal : (uint16_t)p->type2.data;
       if (wave_fill >= SAMPLES_PER_BATCH) {
         emitPacket();
         wave_fill = 0;
