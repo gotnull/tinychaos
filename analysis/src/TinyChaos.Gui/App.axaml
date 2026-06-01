@@ -8,9 +8,9 @@
          dialog) with a tinychaos About plus the standard Hide/Quit items. -->
     <NativeMenu.Menu>
         <NativeMenu>
-            <NativeMenuItem Header="About tinychaos" Click="OnAbout" />
+            <NativeMenuItem Header="About Tiny Chaos" Click="OnAbout" />
             <NativeMenuItemSeparator />
-            <NativeMenuItem Header="Quit tinychaos" Gesture="Cmd+Q" Click="OnQuit" />
+            <NativeMenuItem Header="Quit Tiny Chaos" Gesture="Cmd+Q" Click="OnQuit" />
         </NativeMenu>
     </NativeMenu.Menu>
 

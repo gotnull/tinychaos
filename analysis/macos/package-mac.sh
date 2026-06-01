@@ -17,7 +17,7 @@ PROJ="$ROOT/src/TinyChaos.Gui/TinyChaos.Gui.csproj"
 ICNS="$ROOT/src/TinyChaos.Gui/Assets/tinychaos.icns"
 PLIST="$HERE/Info.plist"
 DIST="$ROOT/dist"
-APP="$DIST/tinychaos.app"
+APP="$DIST/Tiny Chaos.app"               # display name on disk; Dock title comes from CFBundleName
 EXEC="tinychaos-gui"                     # must match CFBundleExecutable / AssemblyName
 
 # Pick the runtime identifier for this Mac.

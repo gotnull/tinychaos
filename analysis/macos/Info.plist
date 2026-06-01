@@ -16,9 +16,9 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>tinychaos</string>
+    <string>Tiny Chaos</string>
     <key>CFBundleDisplayName</key>
-    <string>tinychaos</string>
+    <string>Tiny Chaos</string>
     <key>CFBundleIdentifier</key>
     <string>io.github.gotnull.tinychaos</string>
     <key>CFBundleExecutable</key>

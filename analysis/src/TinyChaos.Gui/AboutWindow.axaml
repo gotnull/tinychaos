@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="TinyChaos.Gui.AboutWindow"
-        Title="About tinychaos"
+        Title="About Tiny Chaos"
         Width="360" Height="380"
         CanResize="False"
         WindowStartupLocation="CenterScreen"
@@ -15,7 +15,7 @@
         <Image Width="96" Height="96" HorizontalAlignment="Center"
                Source="avares://tinychaos-gui/Assets/tinychaos-icon.png" />
 
-        <TextBlock Text="tinychaos" HorizontalAlignment="Center"
+        <TextBlock Text="Tiny Chaos" HorizontalAlignment="Center"
                    FontSize="22" FontWeight="SemiBold"
                    Foreground="{DynamicResource TextPrimary}" />
 

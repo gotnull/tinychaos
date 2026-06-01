@@ -7,7 +7,7 @@
     mc:Ignorable="d"
     x:Class="TinyChaos.Gui.MainWindow"
     x:DataType="vm:MainWindowViewModel"
-    Title="tinychaos"
+    Title="Tiny Chaos"
     Icon="/Assets/tinychaos-icon.ico"
     Width="1180" Height="780"
     MinWidth="960" MinHeight="640"
