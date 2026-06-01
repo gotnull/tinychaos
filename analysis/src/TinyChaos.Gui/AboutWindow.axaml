@@ -30,6 +30,12 @@
         <TextBlock HorizontalAlignment="Center" Classes="mono secondary"
                    Text="github.com/gotnull/tinychaos" />
 
+        <!-- Credit: the original concept came from "The Don". -->
+        <TextBlock HorizontalAlignment="Center" TextAlignment="Center"
+                   Margin="0,6,0,0"
+                   Foreground="{DynamicResource TextTertiary}"
+                   Text="Original concept by The Don" />
+
         <Button Content="Close" Classes="secondary" HorizontalAlignment="Center"
                 Margin="0,8,0,0" Click="OnClose" />
     </StackPanel>

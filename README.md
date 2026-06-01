@@ -443,3 +443,7 @@ The STM32 ADC absolute-maximum input is 3.3 V + 0.3 V. The amplifier output can 
 - For schematic-level questions: [docs/hardware-design.md](docs/hardware-design.md).
 - For firmware integration questions: [firmware/README.md](firmware/README.md).
 - For host tool API questions: read the docstrings in `tools/src/tinychaos/*.py`. The modules are small and intentionally so.
+
+## Credits
+
+The original concept for this project came from **The Don**. Credit where credit is due: he had the idea, and this repository is the build-out of it.
