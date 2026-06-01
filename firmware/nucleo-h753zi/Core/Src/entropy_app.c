@@ -1,15 +1,19 @@
 /*
  * entropy_app.c - tinychaos application glue for the NUCLEO-H753ZI.
  *
- * Stage 2: real ADC capture. ADC1 samples one channel (PA3 = ADC1_INP15,
- * the Arduino A0 header pin) and each batch of PACKET_SAMPLE_COUNT raw
- * 12-bit conversions is framed with the tinychaos wire protocol and sent
- * over USART3 (ST-LINK VCP, PD8/PD9) at 921600. Blocking transmit for now;
- * DMA on both the ADC and the UART comes in the next stages.
+ * Real ADC capture: ADC1 samples PA3 (ADC1_INP15, the Arduino A0 header pin)
+ * and each batch of PACKET_SAMPLE_COUNT raw 12-bit conversions is framed with
+ * the tinychaos wire protocol and sent over USART3 (ST-LINK VCP, PD8/PD9) at
+ * 921600. Sustains ~31 kSa/s, above the 20 kSa/s design target.
  *
- * Polling-based ADC (no DMA yet): simplest path that proves the ADC reads
- * real voltages. The Cortex-M7 data cache is disabled in this project, so
- * when we move to DMA there are no cache-coherency hoops.
+ * Transport is a blocking HAL_UART_Transmit. A DMA TX ring (serial_stream.c)
+ * is the planned optimisation, but it needs the TX buffer in a DMA-reachable
+ * SRAM: on this H7 the linker defaults .bss/.data to DTCM, which DMA1/DMA2
+ * cannot access, and naively relocating everything to AXI SRAM broke boot.
+ * Doing it right means placing just the DMA buffers in AXI/D2 SRAM via a
+ * dedicated linker section - deferred so the working capture path stays
+ * solid. (D-cache is off here, so once the buffers are reachable there are no
+ * coherency hoops.)
  *
  * USART3 + ADC1 are brought up by hand here rather than via CubeMX, so they
  * survive regeneration and keep the .ioc barebones. The HAL UART + ADC
@@ -71,7 +75,6 @@ static void uart3_init(void)
  * Kernel clock from per_ck (CLKP, = HSI by default), /4 prescale. */
 static void adc1_init(void)
 {
-  /* ADC kernel clock: per_ck path (no extra PLL needed). */
   RCC_PeriphCLKInitTypeDef pclk = {0};
   pclk.PeriphClockSelection = RCC_PERIPHCLK_ADC;
   pclk.AdcClockSelection    = RCC_ADCCLKSOURCE_CLKP;
@@ -122,14 +125,12 @@ void entropy_app_init(void)
 
 void entropy_app_task(void)
 {
-  /* Fill one packet's worth of raw 12-bit conversions by polling. Continuous
-   * mode means each PollForConversion returns the next sample. */
   HAL_ADC_Start(&hadc1);
   for (size_t i = 0; i < PACKET_SAMPLE_COUNT; ++i) {
     if (HAL_ADC_PollForConversion(&hadc1, 5) == HAL_OK) {
       s_samples[i] = (uint16_t)HAL_ADC_GetValue(&hadc1);
     } else {
-      s_samples[i] = 0;   /* timeout guard; shouldn't happen */
+      s_samples[i] = 0;
     }
   }
   HAL_ADC_Stop(&hadc1);
