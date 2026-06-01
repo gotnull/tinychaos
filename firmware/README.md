@@ -170,3 +170,7 @@ Once that passes, switch off `ENTROPY_USE_COUNTER_PATTERN` in `main_skeleton.c` 
 - Analogue signal chain, op-amps, bias network: [../docs/hardware-design.md](../docs/hardware-design.md).
 - ADC clamp and protection network: [../docs/adc-protection.md](../docs/adc-protection.md).
 - Decoupling, ferrites, RC filters: [../docs/filtering-and-power.md](../docs/filtering-and-power.md).
+
+## Credits
+
+The original concept for Tiny Chaos came from **The Don**.

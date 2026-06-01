@@ -210,3 +210,7 @@ The resulting `tinychaos-gui` binary is in `src/TinyChaos.Gui/bin/Release/net8.0
 - CSV export from the GUI. The CLI is the canonical CSV producer; the GUI is for live monitoring and replay inspection. Adding CSV export is straightforward: instantiate `TinyChaos.Host.Export.CsvExporter` in `CaptureService` and call `WritePacket` on each `PacketReceivedEvent`.
 
 These are deliberate scope cuts to keep the v1 .NET surface small and reliable. Add them when you need them; the protocol and stats layers will not need to change.
+
+## Credits
+
+The original concept came from **The Don**. The GUI's About box (Tiny Chaos -> menu -> About) credits him too.

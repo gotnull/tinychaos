@@ -96,3 +96,7 @@ tools/
 ```
 
 For protocol details see [../docs/ENTROPY_CAPTURE_PIPELINE.md](../docs/ENTROPY_CAPTURE_PIPELINE.md).
+
+## Credits
+
+The original concept for Tiny Chaos came from **The Don**.
