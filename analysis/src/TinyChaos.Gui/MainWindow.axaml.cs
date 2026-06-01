@@ -60,6 +60,35 @@ public partial class MainWindow : Window
     private void OnResetViewer(object? sender, RoutedEventArgs e)
         => this.FindControl<SavedWaveformView>("SavedView")?.ResetView();
 
+    /// <summary>
+    /// "Export" button: write the loaded capture's samples with all packet
+    /// framing stripped - a raw interleaved uint16 .bin and a CSV - next to the
+    /// source file, then reveal them. (The same thing tools/extract_samples.py
+    /// does, straight from the GUI.)
+    /// </summary>
+    private void OnExportSamples(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm) return;
+        var buf = vm.LoadedCapture;
+        if (buf is null || buf.Length == 0) { vm.ViewerStatusText = "nothing to export"; return; }
+        try
+        {
+            string dir = Path.GetDirectoryName(buf.SourcePath) ?? ".";
+            string stem = Path.GetFileNameWithoutExtension(buf.SourcePath);
+            string rawPath = Path.Combine(dir, $"{stem}-raw.bin");
+            string csvPath = Path.Combine(dir, $"{stem}-samples.csv");
+            buf.WriteRawInterleaved(rawPath);
+            buf.WriteCsv(csvPath);
+            vm.ViewerStatusText =
+                $"exported {Path.GetFileName(rawPath)} + .csv ({buf.Length:N0} samples/ch, no headers)";
+            RevealInFileManager(rawPath);
+        }
+        catch (Exception ex)
+        {
+            vm.ViewerStatusText = $"export failed: {ex.Message}";
+        }
+    }
+
     private void OnSamplesDoubleTapped(object? sender, TappedEventArgs e)
     {
         if (DataContext is not MainWindowViewModel vm) return;

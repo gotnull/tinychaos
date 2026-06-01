@@ -44,6 +44,46 @@ public sealed class CaptureBuffer
     public ushort[] Channel(int ch) => _channels[ch];
 
     /// <summary>
+    /// Write just the sample values - no packet headers, no CRC - as
+    /// channel-interleaved little-endian uint16 (the on-wire sample order:
+    /// ch0, ch1, ch0, ch1, ...). Ready to load in numpy/audio tools/etc.
+    /// </summary>
+    public void WriteRawInterleaved(string path)
+    {
+        using var fs = new FileStream(path, FileMode.Create, FileAccess.Write);
+        var row = new byte[ChannelCount * 2];
+        for (int i = 0; i < Length; i++)
+        {
+            for (int c = 0; c < ChannelCount; c++)
+            {
+                ushort v = _channels[c][i];
+                row[c * 2] = (byte)(v & 0xFF);
+                row[c * 2 + 1] = (byte)(v >> 8);
+            }
+            fs.Write(row, 0, row.Length);
+        }
+    }
+
+    /// <summary>Write samples as CSV: one row per sample, columns index,channel,value.</summary>
+    public void WriteCsv(string path)
+    {
+        using var sw = new StreamWriter(path);
+        sw.Write("index,channel,value\n");
+        for (int i = 0; i < Length; i++)
+        {
+            for (int c = 0; c < ChannelCount; c++)
+            {
+                sw.Write(i * ChannelCount + c);
+                sw.Write(',');
+                sw.Write(c);
+                sw.Write(',');
+                sw.Write(_channels[c][i]);
+                sw.Write('\n');
+            }
+        }
+    }
+
+    /// <summary>
     /// Decode a raw .bin capture into per-channel arrays. <paramref name="channelCount"/>
     /// must match how the firmware interleaves (2 for tinychaos: zener + baseline).
     /// </summary>

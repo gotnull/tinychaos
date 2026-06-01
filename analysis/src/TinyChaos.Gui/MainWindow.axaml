@@ -287,6 +287,9 @@
                                             Text="{Binding #SavedView.YMax, Mode=TwoWay}" />
                                         <Button Classes="secondary" Content="Reset view"
                                             Click="OnResetViewer" VerticalAlignment="Center" />
+                                        <Button Classes="primary" Content="Export"
+                                            Click="OnExportSamples" VerticalAlignment="Center"
+                                            MinWidth="80" />
                                     </StackPanel>
                                 </Grid>
                                 <!-- The interactive trace -->
