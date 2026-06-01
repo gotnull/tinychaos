@@ -22,7 +22,7 @@
 #include "usbd_cdc_if.h"
 
 /* USER CODE BEGIN INCLUDE */
-
+#include "usb_stream.h"   /* tinychaos: TX ring, releases a slot on TX complete */
 /* USER CODE END INCLUDE */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -311,6 +311,10 @@ static int8_t CDC_TransmitCplt_FS(uint8_t *Buf, uint32_t *Len, uint8_t epnum)
   UNUSED(Buf);
   UNUSED(Len);
   UNUSED(epnum);
+  /* tinychaos: a packet finished transmitting - release its ring slot and kick
+   * off the next one. This is what keeps the stream flowing (the bug the cousin
+   * hit was mixing a direct CDC_Transmit with this completion path). */
+  usb_stream_on_tx_complete();
   /* USER CODE END 13 */
   return result;
 }

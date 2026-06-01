@@ -55,7 +55,6 @@
  * on_tx_complete), so the capture code below never refers to a transport
  * directly - it uses the TX_* macros set here. */
 #if defined(ENTROPY_TRANSPORT_USB)
-  #include "usb_device.h"        /* MX_USB_DEVICE_Init (CubeMX-generated)     */
   #include "usb_stream.h"        /* non-blocking USB CDC TX ring              */
   #define TX_INIT()      usb_stream_init()
   #define TX_SEND(p, n)  usb_stream_send((p), (n))
@@ -282,9 +281,9 @@ void entropy_app_init(void)
   led_init();
 #if defined(ENTROPY_TRANSPORT_UART)
   uart3_init();              /* USART3 + its TX DMA */
-#elif defined(ENTROPY_TRANSPORT_USB)
-  MX_USB_DEVICE_Init();      /* CubeMX-generated USB CDC device on CN13 */
 #endif
+  /* USB CDC: main.c already calls MX_USB_DEVICE_Init() before this hook (it's
+   * in the .ioc), so we don't init the device here - only our TX ring. */
   TX_INIT();                 /* transport TX ring (serial_stream / usb_stream) */
   tim3_init();
   adc1_init();
