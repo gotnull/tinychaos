@@ -28,6 +28,7 @@
 #ifdef ENTROPY_TRANSPORT_USB
 
 #include "usbd_cdc_if.h" /* CDC_Transmit_FS, USBD_OK */
+#include "usb_device.h"  /* hUsbDeviceFS, USBD_STATE_CONFIGURED */
 
 /* Number of packet slots in the ring. With PACKET_SAMPLE_COUNT = 256 and
  * the default 64-78 packets/sec, 8 slots give about 100 ms of latency
