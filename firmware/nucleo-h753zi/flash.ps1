@@ -52,5 +52,7 @@ if ($cmd -eq "build") {
 }
 
 Write-Host "=== flashing ==="
-st-flash --reset write $bin 0x08000000
+# --connect-under-reset holds NRST low while attaching, so the probe connects
+# reliably even when the running firmware leaves SWD/clock in an awkward state.
+st-flash --connect-under-reset --reset write $bin 0x08000000
 Write-Host "done. host: python -m tinychaos.cli --port COMx --baud 921600"
