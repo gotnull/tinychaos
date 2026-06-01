@@ -49,5 +49,8 @@ if [ "${1:-flash}" = "build" ]; then
 fi
 
 echo "=== flashing ==="
-st-flash --reset write "$BIN" 0x08000000
+# --connect-under-reset holds NRST low while attaching, so the probe connects
+# reliably even when the currently-running firmware has the SWD/clock in an
+# awkward state (otherwise st-flash can intermittently fail "read core_id").
+st-flash --connect-under-reset --reset write "$BIN" 0x08000000
 echo "done. host: tools/.venv/bin/python -m tinychaos.cli --port /dev/cu.usbmodemXXXX --baud 921600"
