@@ -44,17 +44,30 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
-    # Add user sources here
+    # tinychaos application glue (board-specific)
+    Core/Src/entropy_app.c
+    # Portable wire-protocol module (single source of truth, shared with the
+    # ESP32 firmware + host tools). Referenced from ../Core, not duplicated.
+    ${CMAKE_CURRENT_SOURCE_DIR}/../Core/Src/entropy_protocol.c
+    # USART3 HAL driver: not auto-included because USART3 isn't in the .ioc
+    # (we bring it up by hand). Compiles with HAL_UART_MODULE_ENABLED above.
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_uart.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_uart_ex.c
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
-    # Add user defined include paths
+    Core/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../Core/Inc   # entropy_config.h, entropy_protocol.h
 )
 
 # Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
-    # Add user defined symbols
+    # USART3 is brought up by hand in entropy_app.c (not via CubeMX), so the
+    # HAL UART module isn't auto-enabled in stm32h7xx_hal_conf.h. Enable it
+    # here so the build stays correct across CubeMX regenerations.
+    HAL_UART_MODULE_ENABLED
+    ENTROPY_TRANSPORT_UART
 )
 
 # Remove wrong libob.a library dependency when using cpp files
