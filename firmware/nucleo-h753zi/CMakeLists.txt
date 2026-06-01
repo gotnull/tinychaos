@@ -49,10 +49,13 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Portable wire-protocol module (single source of truth, shared with the
     # ESP32 firmware + host tools). Referenced from ../Core, not duplicated.
     ${CMAKE_CURRENT_SOURCE_DIR}/../Core/Src/entropy_protocol.c
-    # USART3 HAL driver: not auto-included because USART3 isn't in the .ioc
-    # (we bring it up by hand). Compiles with HAL_UART_MODULE_ENABLED above.
+    # USART3 + ADC1 HAL drivers: not auto-included because those peripherals
+    # aren't in the .ioc (we bring them up by hand in entropy_app.c). They
+    # compile under the HAL_*_MODULE_ENABLED defines below.
     ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_uart.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_uart_ex.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_adc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_adc_ex.c
 )
 
 # Add include paths
@@ -67,6 +70,7 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # HAL UART module isn't auto-enabled in stm32h7xx_hal_conf.h. Enable it
     # here so the build stays correct across CubeMX regenerations.
     HAL_UART_MODULE_ENABLED
+    HAL_ADC_MODULE_ENABLED
     ENTROPY_TRANSPORT_UART
 )
 

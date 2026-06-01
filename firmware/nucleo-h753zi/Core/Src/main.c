@@ -1,20 +1,14 @@
 /* USER CODE BEGIN Header */
-/**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+/*
+ * main.c - tinychaos NUCLEO-H753ZI firmware entry point.
+ *
+ * CubeMX owns the HAL init (clock, GPIO) between the USER CODE markers; all
+ * tinychaos application logic lives in entropy_app.c and is invoked from the
+ * two hooks below (entropy_app_init in USER CODE 2, entropy_app_task in the
+ * main loop). See ../NUCLEO_SETUP.md for the build/flash workflow.
+ *
+ * Part of the tinychaos project: github.com/gotnull/tinychaos
+ */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
