@@ -74,8 +74,16 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # here so the build stays correct across CubeMX regenerations.
     HAL_UART_MODULE_ENABLED
     HAL_ADC_MODULE_ENABLED
+    HAL_TIM_MODULE_ENABLED
     ENTROPY_TRANSPORT_UART
 )
+
+# The TIM HAL driver (stm32h7xx_hal_tim.c) lives in the generated STM32_Drivers
+# object library, not our target, so our target-level define above doesn't
+# reach it. Enable the module on that library too, otherwise its body compiles
+# out (#ifdef HAL_TIM_MODULE_ENABLED) and HAL_TIM_Base_Init et al. won't link.
+# (UART/ADC don't need this because we add their .c files to our own target.)
+target_compile_definitions(STM32_Drivers PRIVATE HAL_TIM_MODULE_ENABLED)
 
 # Remove wrong libob.a library dependency when using cpp files
 list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
