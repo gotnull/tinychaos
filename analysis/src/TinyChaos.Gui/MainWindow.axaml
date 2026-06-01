@@ -1,20 +1,21 @@
 <Window xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:vm="using:TinyChaos.Gui"
-        xmlns:local="using:TinyChaos.Gui"
-        mc:Ignorable="d"
-        x:Class="TinyChaos.Gui.MainWindow"
-        x:DataType="vm:MainWindowViewModel"
-        Title="tinychaos"
-        Width="1180" Height="780"
-        MinWidth="960" MinHeight="640"
-        Background="{DynamicResource Surface2}"
-        FontFamily="-apple-system,system-ui,Segoe UI,Helvetica Neue,Arial,sans-serif"
-        FontSize="13">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="using:TinyChaos.Gui"
+    xmlns:local="using:TinyChaos.Gui"
+    mc:Ignorable="d"
+    x:Class="TinyChaos.Gui.MainWindow"
+    x:DataType="vm:MainWindowViewModel"
+    Title="tinychaos"
+    Icon="/Assets/tinychaos-icon.ico"
+    Width="1180" Height="780"
+    MinWidth="960" MinHeight="640"
+    Background="{DynamicResource Surface2}"
+    FontFamily="-apple-system,system-ui,Segoe UI,Helvetica Neue,Arial,sans-serif"
+    FontSize="13">
 
-    <Grid RowDefinitions="Auto,*,Auto" Margin="20">
+    <Grid x:Name="RootContent" RowDefinitions="Auto,*,Auto" Margin="20">
 
         <!-- ========================================= -->
         <!-- Persistent connection toolbar              -->
@@ -25,50 +26,50 @@
                     <TextBlock Grid.Column="0" Classes="h1" Text="CONNECTION" />
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
                         <Ellipse Width="8" Height="8"
-                                 Fill="{Binding StatusDotBrush}"
-                                 VerticalAlignment="Center" />
+                            Fill="{Binding StatusDotBrush}"
+                            VerticalAlignment="Center" />
                         <TextBlock Classes="caption"
-                                   Text="{Binding ConnectionStatusText}"
-                                   VerticalAlignment="Center" />
+                            Text="{Binding ConnectionStatusText}"
+                            VerticalAlignment="Center" />
                     </StackPanel>
                 </Grid>
 
                 <Grid Grid.Row="2"
-                      ColumnDefinitions="Auto,*,20,Auto,220,Auto,Auto,Auto"
-                      RowDefinitions="Auto">
+                    ColumnDefinitions="Auto,*,20,Auto,220,Auto,Auto,Auto"
+                    RowDefinitions="Auto">
                     <TextBlock Grid.Column="0" Classes="formLabel" Text="Port" />
                     <ComboBox Grid.Column="1"
-                              ItemsSource="{Binding AvailablePorts}"
-                              SelectedItem="{Binding SelectedPort, Mode=TwoWay}"
-                              PlaceholderText="select a serial port"
-                              HorizontalAlignment="Stretch" />
+                        ItemsSource="{Binding AvailablePorts}"
+                        SelectedItem="{Binding SelectedPort, Mode=TwoWay}"
+                        PlaceholderText="select a serial port"
+                        HorizontalAlignment="Stretch" />
 
                     <TextBlock Grid.Column="3" Classes="formLabel" Text="Label" />
-                    <TextBox    Grid.Column="4"
-                                Text="{Binding ValidationLabel, Mode=TwoWay}"
-                                Watermark="zener, divider, floating, ..." />
+                    <TextBox Grid.Column="4"
+                        Text="{Binding ValidationLabel, Mode=TwoWay}"
+                        Watermark="zener, divider, floating, ..." />
 
                     <Button Grid.Column="5" Classes="secondary"
-                            Command="{Binding RefreshPortsCommand}"
-                            Content="Refresh"
-                            Margin="20,0,0,0" />
+                        Command="{Binding RefreshPortsCommand}"
+                        Content="Refresh"
+                        Margin="20,0,0,0" />
                     <Button Grid.Column="6" Classes="record"
-                            Command="{Binding ToggleRecordingCommand}"
-                            Content="{Binding RecordButtonLabel}"
-                            Margin="10,0,0,0" />
+                        Command="{Binding ToggleRecordingCommand}"
+                        Content="{Binding RecordButtonLabel}"
+                        Margin="10,0,0,0" />
                     <Button Grid.Column="7" Classes="primary"
-                            Command="{Binding ToggleConnectionCommand}"
-                            Content="{Binding ConnectButtonLabel}"
-                            Margin="10,0,0,0" />
+                        Command="{Binding ToggleConnectionCommand}"
+                        Content="{Binding ConnectButtonLabel}"
+                        Margin="10,0,0,0" />
                 </Grid>
 
                 <!-- Recording-path readout, shown only while recording -->
                 <TextBlock Grid.Row="3"
-                           Classes="caption"
-                           Margin="0,8,0,0"
-                           Text="{Binding RecordingPathText, StringFormat='recording to {0}'}"
-                           IsVisible="{Binding IsRecording}"
-                           HorizontalAlignment="Right" />
+                    Classes="caption"
+                    Margin="0,8,0,0"
+                    Text="{Binding RecordingPathText, StringFormat='recording to {0}'}"
+                    IsVisible="{Binding IsRecording}"
+                    HorizontalAlignment="Right" />
             </Grid>
         </Border>
 
@@ -76,7 +77,7 @@
         <!-- Tab control with three contextual panels   -->
         <!-- ========================================= -->
         <TabControl Grid.Row="1" Padding="0"
-                    SelectedIndex="{Binding ActiveTabIndex, Mode=TwoWay}">
+            SelectedIndex="{Binding ActiveTabIndex, Mode=TwoWay}">
 
             <!-- ============== LIVE CAPTURE ============== -->
             <TabItem Header="Live capture">
@@ -89,17 +90,29 @@
                                 <TextBlock Grid.Column="0" Classes="h1" Text="WAVEFORM" />
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <Border Classes="swatch" Background="{DynamicResource Channel0Brush}" />
-                                        <TextBlock Classes="caption" Text="channel 0 (zener)" />
+                                        <Border Classes="swatch"
+                                            Background="{DynamicResource Channel0Brush}" />
+                                        <TextBlock Classes="caption" Text="channel 0 (zener)"
+                                            VerticalAlignment="Center" />
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <Border Classes="swatch" Background="{DynamicResource Channel1Brush}" />
-                                        <TextBlock Classes="caption" Text="channel 1 (baseline)" />
+                                        <Border Classes="swatch"
+                                            Background="{DynamicResource Channel1Brush}" />
+                                        <TextBlock Classes="caption" Text="channel 1 (baseline)"
+                                            VerticalAlignment="Center" />
                                     </StackPanel>
+                                    <!-- Captures the whole app to a shareable MP4 clip (H.264,
+                                         Telegram-friendly) via ffmpeg. Click handled in code-behind:
+                                         rendering a control to a bitmap is a View concern (needs the
+                                         control reference). -->
+                                    <Button x:Name="RecordVideoButton" Classes="secondary"
+                                        Click="OnRecordVideo" Content="Record MP4"
+                                        VerticalAlignment="Center" />
                                 </StackPanel>
                             </Grid>
                             <Border Grid.Row="2" Classes="chartHolder">
-                                <local:WaveformView Model="{Binding Waveform}" />
+                                <local:WaveformView x:Name="WaveformControl"
+                                    Model="{Binding Waveform}" />
                             </Border>
                         </Grid>
                     </Border>
@@ -109,7 +122,8 @@
                         <Grid RowDefinitions="Auto,12,*">
                             <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
                                 <TextBlock Grid.Column="0" Classes="h1" Text="DISTRIBUTION" />
-                                <TextBlock Grid.Column="1" Classes="caption" Text="ADC code: 0 to 4095 (12-bit)" />
+                                <TextBlock Grid.Column="1" Classes="caption"
+                                    Text="ADC code: 0 to 4095 (12-bit)" />
                             </Grid>
                             <Border Grid.Row="2" Classes="chartHolder">
                                 <local:HistogramView Model="{Binding Histogram}" />
@@ -132,102 +146,103 @@
                 <Border Classes="card" Margin="0,12,0,0">
                     <Grid RowDefinitions="Auto,10,Auto,Auto,*" ColumnDefinitions="*">
                         <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
-                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12"
+                                VerticalAlignment="Center">
                                 <TextBlock Classes="h1" Text="SAMPLES" />
                                 <TextBlock Classes="caption" Text="{Binding SamplesStatusText}" />
                                 <TextBlock Classes="caption" Text="{Binding SamplesDirectory}" />
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
                                 <Button Classes="secondary"
-                                        Command="{Binding RefreshSamplesCommand}"
-                                        Content="Refresh" />
+                                    Command="{Binding RefreshSamplesCommand}"
+                                    Content="Refresh" />
                                 <Button Classes="secondary"
-                                        Command="{Binding OpenSamplesFolderCommand}"
-                                        Content="Open folder" />
+                                    Command="{Binding OpenSamplesFolderCommand}"
+                                    Content="Open folder" />
                                 <Button Classes="record"
-                                        Command="{Binding RequestDeleteSamplesCommand}"
-                                        IsEnabled="{Binding HasDeletableSelection}"
-                                        MinWidth="80"
-                                        Content="{Binding DeletableSelectedCount, StringFormat='Delete ({0})'}" />
+                                    Command="{Binding RequestDeleteSamplesCommand}"
+                                    IsEnabled="{Binding HasDeletableSelection}"
+                                    MinWidth="80"
+                                    Content="{Binding DeletableSelectedCount, StringFormat='Delete ({0})'}" />
                             </StackPanel>
                         </Grid>
 
                         <!-- Inline confirmation banner. Shown only when a delete is pending. -->
                         <Border Grid.Row="2"
-                                IsVisible="{Binding IsConfirmingDelete}"
-                                Background="#3B1E22"
-                                BorderBrush="{DynamicResource Record}"
-                                BorderThickness="1"
-                                CornerRadius="4"
-                                Padding="14,10"
-                                Margin="0,0,0,10">
+                            IsVisible="{Binding IsConfirmingDelete}"
+                            Background="#3B1E22"
+                            BorderBrush="{DynamicResource Record}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="14,10"
+                            Margin="0,0,0,10">
                             <Grid ColumnDefinitions="*,Auto,Auto">
                                 <TextBlock Grid.Column="0"
-                                           Text="{Binding DeleteConfirmText}"
-                                           Foreground="{DynamicResource TextPrimary}"
-                                           VerticalAlignment="Center" />
+                                    Text="{Binding DeleteConfirmText}"
+                                    Foreground="{DynamicResource TextPrimary}"
+                                    VerticalAlignment="Center" />
                                 <Button Grid.Column="1" Classes="secondary"
-                                        Command="{Binding CancelDeleteSamplesCommand}"
-                                        Content="Cancel" />
+                                    Command="{Binding CancelDeleteSamplesCommand}"
+                                    Content="Cancel" />
                                 <Button Grid.Column="2" Classes="record"
-                                        Command="{Binding ConfirmDeleteSamplesCommand}"
-                                        Content="Confirm delete"
-                                        Margin="8,0,0,0" />
+                                    Command="{Binding ConfirmDeleteSamplesCommand}"
+                                    Content="Confirm delete"
+                                    Margin="8,0,0,0" />
                             </Grid>
                         </Border>
 
                         <!-- Helper hint above the list. -->
                         <TextBlock Grid.Row="3"
-                                   Classes="caption"
-                                   Margin="0,0,0,8"
-                                   Text="Tip: click to select, Ctrl/Cmd-click to multi-select, double-click to replay. Demo samples are read-only." />
+                            Classes="caption"
+                            Margin="0,0,0,8"
+                            Text="Tip: click to select, Ctrl/Cmd-click to multi-select, double-click to replay. Demo samples are read-only." />
 
                         <ListBox Grid.Row="4"
-                                 Name="SamplesListBox"
-                                 ItemsSource="{Binding Samples}"
-                                 SelectionMode="Multiple"
-                                 Background="{DynamicResource Surface0}"
-                                 BorderBrush="{DynamicResource SurfaceBorderSoft}"
-                                 BorderThickness="1"
-                                 CornerRadius="4"
-                                 Padding="2">
+                            Name="SamplesListBox"
+                            ItemsSource="{Binding Samples}"
+                            SelectionMode="Multiple"
+                            Background="{DynamicResource Surface0}"
+                            BorderBrush="{DynamicResource SurfaceBorderSoft}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="2">
                             <ListBox.ItemTemplate>
                                 <DataTemplate DataType="vm:SampleEntry">
                                     <Grid ColumnDefinitions="Auto,*,Auto,160" Margin="6,6">
                                         <!-- Demo lock badge (or blank for user samples) -->
                                         <Border Grid.Column="0"
-                                                IsVisible="{Binding IsDemo}"
-                                                Background="#2A3140"
-                                                BorderBrush="{DynamicResource SurfaceBorder}"
-                                                BorderThickness="1"
-                                                CornerRadius="3"
-                                                Padding="6,2"
-                                                Margin="0,0,10,0"
-                                                VerticalAlignment="Center">
+                                            IsVisible="{Binding IsDemo}"
+                                            Background="#2A3140"
+                                            BorderBrush="{DynamicResource SurfaceBorder}"
+                                            BorderThickness="1"
+                                            CornerRadius="3"
+                                            Padding="6,2"
+                                            Margin="0,0,10,0"
+                                            VerticalAlignment="Center">
                                             <TextBlock Text="demo"
-                                                       FontSize="10"
-                                                       Foreground="{DynamicResource TextSecondary}"
-                                                       LetterSpacing="0.6" />
+                                                FontSize="10"
+                                                Foreground="{DynamicResource TextSecondary}"
+                                                LetterSpacing="0.6" />
                                         </Border>
                                         <TextBlock Grid.Column="1"
-                                                   Text="{Binding FileName}"
-                                                   Foreground="{DynamicResource TextPrimary}"
-                                                   FontSize="13"
-                                                   VerticalAlignment="Center"
-                                                   TextTrimming="CharacterEllipsis" />
+                                            Text="{Binding FileName}"
+                                            Foreground="{DynamicResource TextPrimary}"
+                                            FontSize="13"
+                                            VerticalAlignment="Center"
+                                            TextTrimming="CharacterEllipsis" />
                                         <TextBlock Grid.Column="2"
-                                                   Text="{Binding SizeText}"
-                                                   Foreground="{DynamicResource TextSecondary}"
-                                                   FontFamily="Menlo,Consolas,monospace"
-                                                   FontSize="11"
-                                                   Margin="12,0"
-                                                   VerticalAlignment="Center" />
+                                            Text="{Binding SizeText}"
+                                            Foreground="{DynamicResource TextSecondary}"
+                                            FontFamily="Menlo,Consolas,monospace"
+                                            FontSize="11"
+                                            Margin="12,0"
+                                            VerticalAlignment="Center" />
                                         <TextBlock Grid.Column="3"
-                                                   Text="{Binding ModifiedText}"
-                                                   Foreground="{DynamicResource TextSecondary}"
-                                                   FontSize="11"
-                                                   HorizontalAlignment="Right"
-                                                   VerticalAlignment="Center" />
+                                            Text="{Binding ModifiedText}"
+                                            Foreground="{DynamicResource TextSecondary}"
+                                            FontSize="11"
+                                            HorizontalAlignment="Right"
+                                            VerticalAlignment="Center" />
                                     </Grid>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
@@ -242,46 +257,50 @@
                     <Grid RowDefinitions="Auto,12,*" ColumnDefinitions="*">
 
                         <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
-                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12"
+                                VerticalAlignment="Center">
                                 <TextBlock Classes="h1" Text="BUILD &amp; FLASH" />
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <Ellipse Width="8" Height="8" Fill="{Binding BuildStatusDotBrush}" VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal" Spacing="6"
+                                    VerticalAlignment="Center">
+                                    <Ellipse Width="8" Height="8"
+                                        Fill="{Binding BuildStatusDotBrush}"
+                                        VerticalAlignment="Center" />
                                     <TextBlock Classes="caption" Text="{Binding BuildStatusText}" />
                                 </StackPanel>
                                 <TextBlock Classes="caption" Text="{Binding FirmwareDirectory}" />
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
                                 <Button Classes="secondary"
-                                        Command="{Binding RunFirmwareSelfTestCommand}"
-                                        IsEnabled="{Binding !IsBusyBuilding}"
-                                        Content="Self-test" />
+                                    Command="{Binding RunFirmwareSelfTestCommand}"
+                                    IsEnabled="{Binding !IsBusyBuilding}"
+                                    Content="Self-test" />
                                 <Button Classes="secondary"
-                                        Command="{Binding ClearBuildLogCommand}"
-                                        Content="Clear" />
+                                    Command="{Binding ClearBuildLogCommand}"
+                                    Content="Clear" />
                                 <Button Classes="secondary"
-                                        Command="{Binding BuildFirmwareCommand}"
-                                        IsEnabled="{Binding !IsBusyBuilding}"
-                                        Content="Build" />
+                                    Command="{Binding BuildFirmwareCommand}"
+                                    IsEnabled="{Binding !IsBusyBuilding}"
+                                    Content="Build" />
                                 <Button Classes="primary"
-                                        Command="{Binding FlashFirmwareCommand}"
-                                        IsEnabled="{Binding !IsBusyBuilding}"
-                                        Content="Flash" />
+                                    Command="{Binding FlashFirmwareCommand}"
+                                    IsEnabled="{Binding !IsBusyBuilding}"
+                                    Content="Flash" />
                             </StackPanel>
                         </Grid>
 
                         <ScrollViewer Grid.Row="2"
-                                      VerticalScrollBarVisibility="Auto"
-                                      HorizontalScrollBarVisibility="Auto"
-                                      Background="{DynamicResource Surface0}"
-                                      BorderBrush="{DynamicResource SurfaceBorderSoft}"
-                                      BorderThickness="1"
-                                      CornerRadius="4"
-                                      Padding="12,10">
+                            VerticalScrollBarVisibility="Auto"
+                            HorizontalScrollBarVisibility="Auto"
+                            Background="{DynamicResource Surface0}"
+                            BorderBrush="{DynamicResource SurfaceBorderSoft}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="12,10">
                             <TextBlock Text="{Binding BuildLog}"
-                                       FontFamily="Menlo,Consolas,Courier New,monospace"
-                                       FontSize="12"
-                                       Foreground="{DynamicResource TextPrimary}"
-                                       TextWrapping="NoWrap" />
+                                FontFamily="Menlo,Consolas,Courier New,monospace"
+                                FontSize="12"
+                                Foreground="{DynamicResource TextPrimary}"
+                                TextWrapping="NoWrap" />
                         </ScrollViewer>
                     </Grid>
                 </Border>

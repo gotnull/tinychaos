@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  tinychaos application icon.
+
+  Motif: an atom (quantum / entropy source) whose nucleus is a small burst of
+  avalanche noise. Three electron orbits in the app's channel palette (cyan +
+  blue) circle a glowing orange nucleus, matching the GUI design tokens in
+  App.axaml (Accent #3B82F6, Channel0 #4FC3F7, Channel1 #FF8040, Surface
+  #0E1218). One orbit is drawn as a jagged noise trace rather than a smooth
+  ellipse, tying the "quantum" symbol to what the device actually does:
+  capture broadband avalanche noise.
+
+  Authored by hand (no third-party artwork) so there are no licensing
+  constraints. Rasterised to PNG/ICO for the window icon - see Assets/.
+-->
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Background squircle fill: deep surface gradient. -->
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="256" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1B2230"/>
+      <stop offset="1" stop-color="#0C1016"/>
+    </linearGradient>
+    <!-- Orbit stroke: cyan channel into accent blue. -->
+    <linearGradient id="orbit" x1="36" y1="60" x2="220" y2="196" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4FC3F7"/>
+      <stop offset="1" stop-color="#3B82F6"/>
+    </linearGradient>
+    <!-- Nucleus glow. -->
+    <radialGradient id="core" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FFD2A6"/>
+      <stop offset="0.45" stop-color="#FF8040"/>
+      <stop offset="1" stop-color="#E5484D"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Rounded-square app surface with a hairline border to match the card UI. -->
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/>
+  <rect x="8.5" y="8.5" width="239" height="239" rx="55.5" stroke="#2A3140" stroke-opacity="0.9"/>
+
+  <g transform="translate(128 128)" stroke="url(#orbit)" stroke-width="6" fill="none" stroke-opacity="0.95">
+    <!-- Two smooth electron orbits, rotated to give the classic atom look. -->
+    <ellipse rx="92" ry="34" transform="rotate(30)"/>
+    <ellipse rx="92" ry="34" transform="rotate(-30)"/>
+    <!-- Third "orbit" rendered as a noise trace: an avalanche-noise burst
+         wrapped onto the horizontal axis. Same gradient stroke, no fill. -->
+    <path stroke-width="5.5" stroke-linejoin="round" stroke-linecap="round"
+          d="M -92 0 L -78 -7 L -69 9 L -58 -16 L -47 12 L -38 -5 L -28 22
+             L -17 -19 L -7 8 L 3 -24 L 13 17 L 23 -9 L 33 20 L 44 -14
+             L 54 6 L 64 -11 L 75 8 L 92 0"/>
+  </g>
+
+  <!-- Electrons riding the smooth orbits. -->
+  <circle cx="197" cy="86" r="9" fill="#4FC3F7"/>
+  <circle cx="59" cy="170" r="9" fill="#3B82F6"/>
+
+  <!-- Nucleus: the glowing avalanche-noise core. -->
+  <circle cx="128" cy="128" r="20" fill="url(#core)"/>
+  <circle cx="128" cy="128" r="20" fill="none" stroke="#FFD2A6" stroke-opacity="0.35" stroke-width="2"/>
+</svg>

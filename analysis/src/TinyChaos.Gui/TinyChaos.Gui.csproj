@@ -13,11 +13,21 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- App icon (atom / avalanche-noise motif). Bundled as an Avalonia
+         resource so Window.Icon can load it at runtime; the .svg source and
+         .ico live alongside it under Assets/. -->
+    <AvaloniaResource Include="Assets/**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.2.1" />
     <PackageReference Include="Avalonia.Desktop" Version="11.2.1" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.1" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
     <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+    <!-- Animated-GIF encoder for the "Record GIF" button (captures the live
+         waveform to a shareable clip). Pure-managed, cross-platform. -->
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
   </ItemGroup>
 
   <ItemGroup>
