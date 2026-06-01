@@ -8,7 +8,14 @@ namespace TinyChaos.Gui;
 
 public partial class App : Application
 {
-    public override void Initialize() => AvaloniaXamlLoader.Load(this);
+    public override void Initialize()
+    {
+        // Drives the macOS application-menu title (the bold item next to the
+        // Apple logo). Without this Avalonia uses its default "Avalonia
+        // Application". Set before the XAML/menu loads so it takes effect.
+        Name = "Tiny Chaos";
+        AvaloniaXamlLoader.Load(this);
+    }
 
     /// <summary>App-menu "About tinychaos": show the branded About window.</summary>
     private void OnAbout(object? sender, EventArgs e)
