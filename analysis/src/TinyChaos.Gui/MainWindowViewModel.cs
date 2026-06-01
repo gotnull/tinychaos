@@ -96,6 +96,38 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _samplesStatusText = "";
 
+    // Saved-data viewer (Samples tab): the full decoded capture currently shown,
+    // plus a status line. Loaded on selection from the samples list.
+    [ObservableProperty]
+    private CaptureBuffer? _loadedCapture;
+
+    [ObservableProperty]
+    private string _viewerStatusText = "select a capture to view";
+
+    /// <summary>
+    /// Decode a sample file in full and hand it to the saved-data viewer. Called
+    /// when the user selects a row in the samples list (single click). Decoding
+    /// is CRC-validated via the framer; a corrupt/empty file yields a message
+    /// rather than throwing.
+    /// </summary>
+    public void ShowSampleInViewer(SampleEntry? entry)
+    {
+        if (entry is null) return;
+        try
+        {
+            var buf = CaptureBuffer.Load(entry.FullPath, channelCount: 2);
+            LoadedCapture = buf;
+            ViewerStatusText = buf.Length > 0
+                ? $"{entry.FileName} — {buf.PacketCount:N0} packets, {buf.Length:N0} samples/ch"
+                : $"{entry.FileName} — no valid packets";
+        }
+        catch (Exception ex)
+        {
+            LoadedCapture = null;
+            ViewerStatusText = $"load failed: {ex.Message}";
+        }
+    }
+
     [ObservableProperty]
     private int _activeTabIndex;
 

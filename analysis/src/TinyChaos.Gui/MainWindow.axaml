@@ -158,7 +158,7 @@
             <!-- ============== SAMPLES ============== -->
             <TabItem Header="Samples">
                 <Border Classes="card" Margin="0,12,0,0">
-                    <Grid RowDefinitions="Auto,10,Auto,Auto,*" ColumnDefinitions="*">
+                    <Grid RowDefinitions="Auto,10,Auto,Auto,2*,12,3*" ColumnDefinitions="*">
                         <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
                             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12"
                                 VerticalAlignment="Center">
@@ -209,7 +209,7 @@
                         <TextBlock Grid.Row="3"
                             Classes="caption"
                             Margin="0,0,0,8"
-                            Text="Tip: click to select, Ctrl/Cmd-click to multi-select, double-click to replay. Demo samples are read-only." />
+                            Text="Tip: click a capture to load it in the viewer below; double-click to replay live. Ctrl/Cmd-click to multi-select for delete." />
 
                         <ListBox Grid.Row="4"
                             Name="SamplesListBox"
@@ -261,6 +261,50 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
+
+                        <!-- ===== Saved-data viewer: pan / zoom / Y-range ===== -->
+                        <Border Grid.Row="6" Classes="card" Padding="10">
+                            <Grid RowDefinitions="Auto,8,*">
+                                <!-- Control bar -->
+                                <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12"
+                                        VerticalAlignment="Center">
+                                        <TextBlock Classes="h1" Text="VIEWER" />
+                                        <TextBlock Classes="caption" Text="{Binding ViewerStatusText}"
+                                            VerticalAlignment="Center" />
+                                        <Border Classes="swatch" Background="{DynamicResource Channel0Brush}" />
+                                        <TextBlock Classes="caption" Text="ch0 (zener)" VerticalAlignment="Center" />
+                                        <Border Classes="swatch" Background="{DynamicResource Channel1Brush}" />
+                                        <TextBlock Classes="caption" Text="ch1 (baseline)" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6"
+                                        VerticalAlignment="Center">
+                                        <TextBlock Classes="formLabel" Text="Y" VerticalAlignment="Center" />
+                                        <TextBox Width="74" VerticalAlignment="Center"
+                                            Text="{Binding #SavedView.YMin, Mode=TwoWay}" />
+                                        <TextBlock Classes="caption" Text="to" VerticalAlignment="Center" />
+                                        <TextBox Width="74" VerticalAlignment="Center"
+                                            Text="{Binding #SavedView.YMax, Mode=TwoWay}" />
+                                        <Button Classes="secondary" Content="Reset view"
+                                            Click="OnResetViewer" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Grid>
+                                <!-- The interactive trace -->
+                                <Border Grid.Row="2" Classes="chartHolder">
+                                    <Panel>
+                                        <local:SavedWaveformView x:Name="SavedView"
+                                            Buffer="{Binding LoadedCapture}" />
+                                        <TextBlock Classes="caption" Text="{Binding #SavedView.RangeText}"
+                                            HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                            Margin="0,0,8,4" />
+                                        <TextBlock Classes="caption"
+                                            Text="drag = pan · wheel = zoom time · Shift+wheel = zoom value"
+                                            HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                            Margin="56,0,0,4" Foreground="{DynamicResource TextTertiary}" />
+                                    </Panel>
+                                </Border>
+                            </Grid>
+                        </Border>
                     </Grid>
                 </Border>
             </TabItem>

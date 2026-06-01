@@ -44,7 +44,21 @@ public partial class MainWindow : Window
                 vm.SelectedSamples.Add(entry);
             }
         }
+
+        // Load the just-clicked capture into the saved-data viewer (prefer the
+        // newly-added item; fall back to the first selected).
+        SampleEntry? toView = null;
+        foreach (var item in e.AddedItems)
+        {
+            if (item is SampleEntry se) { toView = se; break; }
+        }
+        toView ??= vm.SelectedSamples.Count > 0 ? vm.SelectedSamples[0] : null;
+        if (toView is not null) vm.ShowSampleInViewer(toView);
     }
+
+    /// <summary>"Reset view" button: return the saved-data viewer to full scale.</summary>
+    private void OnResetViewer(object? sender, RoutedEventArgs e)
+        => this.FindControl<SavedWaveformView>("SavedView")?.ResetView();
 
     private void OnSamplesDoubleTapped(object? sender, TappedEventArgs e)
     {
