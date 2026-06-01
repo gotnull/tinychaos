@@ -146,6 +146,7 @@ void usb_stream_on_tx_complete(void)
 void usb_stream_init(void) {}
 bool usb_stream_send(const uint8_t *data, size_t len) { (void)data; (void)len; return false; }
 void usb_stream_pump(void) {}
+void usb_stream_on_tx_complete(void) {}
 usb_stream_stats_t usb_stream_get_stats(void) { usb_stream_stats_t s = {0}; return s; }
 
 #endif /* ENTROPY_TRANSPORT_USB */
