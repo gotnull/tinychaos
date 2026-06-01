@@ -247,51 +247,73 @@ public static class VideoRecorder
         return "bgra";
     }
 
-    /// <summary>Find ffmpeg on PATH, then in common Homebrew/system locations.</summary>
+    /// <summary>
+    /// Find ffmpeg cross-platform: PATH first (via where/which), then the usual
+    /// install locations on each OS (GUI launches can have a minimal PATH).
+    /// Returns null if not found, in which case the caller falls back to GIF.
+    /// </summary>
     private static string? LocateFfmpeg()
     {
-        // Probe PATH via the shell's resolution (works when launched from a
-        // terminal). GUI launches from Finder may have a minimal PATH, so we
-        // also check the usual install dirs explicitly.
-        var candidates = new[]
+        bool windows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+
+        // 1) Ask the shell to resolve it on PATH (where on Windows, which else).
+        try
         {
-            "/opt/homebrew/bin/ffmpeg", // Apple-silicon Homebrew
-            "/usr/local/bin/ffmpeg",    // Intel Homebrew
-            "/usr/bin/ffmpeg",
-        };
+            using var lookup = Process.Start(new ProcessStartInfo
+            {
+                FileName = windows ? "where" : "which",
+                Arguments = "ffmpeg",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true,
+            });
+            if (lookup is not null)
+            {
+                string outp = lookup.StandardOutput.ReadToEnd();
+                lookup.WaitForExit();
+                foreach (var line in outp.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    string p = line.Trim();
+                    if (p.Length > 0 && File.Exists(p))
+                    {
+                        return p;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // ignore - fall through to explicit locations
+        }
+
+        // 2) Common install dirs that may not be on a GUI process's PATH.
+        string[] candidates;
+        if (windows)
+        {
+            string user = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            candidates = new[]
+            {
+                @"C:\ffmpeg\bin\ffmpeg.exe",
+                @"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
+                @"C:\ProgramData\chocolatey\bin\ffmpeg.exe",   // choco
+                Path.Combine(user, @"scoop\shims\ffmpeg.exe"), // scoop
+            };
+        }
+        else
+        {
+            candidates = new[]
+            {
+                "/opt/homebrew/bin/ffmpeg", // Apple-silicon Homebrew
+                "/usr/local/bin/ffmpeg",    // Intel Homebrew / Linux
+                "/usr/bin/ffmpeg",
+            };
+        }
         foreach (var c in candidates)
         {
             if (File.Exists(c))
             {
                 return c;
             }
-        }
-
-        // Last resort: ask the shell to resolve it on PATH.
-        try
-        {
-            using var which = Process.Start(new ProcessStartInfo
-            {
-                FileName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "where" : "which",
-                Arguments = "ffmpeg",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                CreateNoWindow = true,
-            });
-            if (which is not null)
-            {
-                string outp = which.StandardOutput.ReadToEnd().Trim();
-                which.WaitForExit();
-                var first = outp.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-                if (first.Length > 0 && File.Exists(first[0]))
-                {
-                    return first[0];
-                }
-            }
-        }
-        catch
-        {
-            // ignore - fall through to null
         }
         return null;
     }

@@ -1,6 +1,7 @@
 using System;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 
 namespace TinyChaos.Gui;
@@ -8,6 +9,30 @@ namespace TinyChaos.Gui;
 public partial class App : Application
 {
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
+
+    /// <summary>App-menu "About tinychaos": show the branded About window.</summary>
+    private void OnAbout(object? sender, EventArgs e)
+    {
+        var about = new AboutWindow();
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
+            && desktop.MainWindow is { } owner)
+        {
+            about.ShowDialog(owner);
+        }
+        else
+        {
+            about.Show();
+        }
+    }
+
+    /// <summary>App-menu "Quit tinychaos".</summary>
+    private void OnQuit(object? sender, EventArgs e)
+    {
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            desktop.Shutdown();
+        }
+    }
 
     public override void OnFrameworkInitializationCompleted()
     {

@@ -10,6 +10,9 @@
     <AssemblyName>tinychaos-gui</AssemblyName>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Windows .exe file icon (Explorer/taskbar). Ignored on macOS/Linux,
+         where the Dock/window icon comes from Window.Icon and the .app bundle. -->
+    <ApplicationIcon>Assets/tinychaos-icon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

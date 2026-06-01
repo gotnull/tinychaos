@@ -1,0 +1,36 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="TinyChaos.Gui.AboutWindow"
+        Title="About tinychaos"
+        Width="360" Height="380"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource Surface2}"
+        FontFamily="-apple-system,system-ui,Segoe UI,Helvetica Neue,Arial,sans-serif">
+
+    <!-- Simple branded About box: icon, name, version, one-line description and
+         the project link. Shown from the custom native menu's "About tinychaos"
+         item (replaces Avalonia's default About dialog). -->
+    <StackPanel Margin="28" Spacing="10" HorizontalAlignment="Center">
+        <Image Width="96" Height="96" HorizontalAlignment="Center"
+               Source="avares://tinychaos-gui/Assets/tinychaos-icon.png" />
+
+        <TextBlock Text="tinychaos" HorizontalAlignment="Center"
+                   FontSize="22" FontWeight="SemiBold"
+                   Foreground="{DynamicResource TextPrimary}" />
+
+        <TextBlock x:Name="VersionText" HorizontalAlignment="Center"
+                   Classes="caption" />
+
+        <TextBlock HorizontalAlignment="Center" TextAlignment="Center"
+                   TextWrapping="Wrap" MaxWidth="280"
+                   Foreground="{DynamicResource TextSecondary}"
+                   Text="Avalanche-noise hardware random number generator. Captures zener-diode entropy over USB and analyses it live." />
+
+        <TextBlock HorizontalAlignment="Center" Classes="mono secondary"
+                   Text="github.com/gotnull/tinychaos" />
+
+        <Button Content="Close" Classes="secondary" HorizontalAlignment="Center"
+                Margin="0,8,0,0" Click="OnClose" />
+    </StackPanel>
+</Window>

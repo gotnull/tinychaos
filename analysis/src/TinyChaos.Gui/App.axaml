@@ -3,6 +3,17 @@
              x:Class="TinyChaos.Gui.App"
              RequestedThemeVariant="Dark">
 
+    <!-- Custom macOS application menu. Supplying our own NativeMenu replaces
+         Avalonia's built-in default (which shows a generic "About Avalonia"
+         dialog) with a tinychaos About plus the standard Hide/Quit items. -->
+    <NativeMenu.Menu>
+        <NativeMenu>
+            <NativeMenuItem Header="About tinychaos" Click="OnAbout" />
+            <NativeMenuItemSeparator />
+            <NativeMenuItem Header="Quit tinychaos" Gesture="Cmd+Q" Click="OnQuit" />
+        </NativeMenu>
+    </NativeMenu.Menu>
+
     <Application.Styles>
         <FluentTheme />
 
