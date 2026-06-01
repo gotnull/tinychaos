@@ -3,10 +3,19 @@
  *
  * Fully DMA-driven capture + transport (CPU only frames + enqueues):
  *
- *   TIM3 update --triggers--> ADC1 (PA3 / ADC1_INP15) at a precise rate
- *   --DMA circular--> adc_buf (double buffer, 2 x PACKET_SAMPLE_COUNT)
+ *   TIM3 update --triggers--> ADC1 scan of TWO channels at a precise rate
+ *     rank 1 = PA3 / ADC1_INP15  (A0  - zener entropy source)
+ *     rank 2 = PC0 / ADC1_INP10  (A1? CN9 - baseline divider reference)
+ *   --DMA circular--> adc_buf (double buffer), samples interleaved
+ *     [zener, baseline, zener, baseline, ...] so the host de-interleaves with
+ *     channel index = sample_index % 2 (host channelCount is 2 already)
  *   --half/full callback--> frame one half --serial_stream--> USART3 TX DMA
  *   --> ST-LINK VCP at 921600.
+ *
+ * Two channels lets the host subtract the baseline (mains hum + ADC noise
+ * floor) from the zener channel to isolate the avalanche noise. With nothing
+ * wired yet both pins float; once the circuit is built, ch0 carries the
+ * amplified zener noise and ch1 the clean 1.65 V divider reference.
  *
  * Nothing busy-waits: the ADC is paced by the timer, both the ADC capture
  * and the UART transmit run on DMA, and the main loop just turns ready
@@ -29,22 +38,25 @@
 #include "entropy_protocol.h"
 #include "serial_stream.h"      /* non-blocking UART TX ring (DMA) */
 
-/* TIM3 reload value that paces the ADC. This is a register period, NOT a
- * verified Hz figure: the true rate depends on the APB1 timer-clock, which on
- * this project does NOT equal the naive SYSCLK (measured capture comes out at
- * ~35-40 kSa/s with this value, implying an ~70-80 MHz timer clock - the
- * effective clock has not been pinned down). What matters for correctness:
- *   - the rate sits safely above the 20 kSa/s design target, and
- *   - packets/s (rate / PACKET_SAMPLE_COUNT, ~140-155/s) stays under the
- *     ~174 packets/s the 921600 UART can carry, so the TX ring never overruns
- *     (verified: 0 sequence gaps).
- * TODO(next dev): if a precise sample rate is needed, read the actual APB1
- * timer clock (HAL_RCC_GetPCLK1Freq() x timer-multiplier) at runtime and
- * compute the reload from it instead of this fixed value.
+/* Target ADC sample rate. The TIM3 reload that achieves it is computed at
+ * runtime from the *actual* timer kernel clock (tim3_reload_for_rate), not a
+ * hard-coded guess, so the rate is correct whatever the clock tree does.
  *
- * One conversion per trigger, PACKET_SAMPLE_COUNT conversions per half-buffer
- * => one packet per half-complete / full-complete DMA callback. */
-#define TIM3_RELOAD_PERIOD   2000U
+ * This is the PER-CHANNEL rate (one TIM3 trigger runs the whole 2-channel
+ * scan, so each trigger yields 2 samples). Total samples/s = SAMPLE_RATE_HZ x
+ * 2, and packets/s = (SAMPLE_RATE_HZ x 2) / PACKET_SAMPLE_COUNT. At 10 kHz/ch
+ * that is 20000 samples/s total => ~78 packets/s, well under the ~174
+ * packets/s the 921600 UART can carry (the TX ring never overruns). Raise this
+ * for more samples/s as long as packets/s stays under that ceiling. 10 kHz/ch
+ * matches the original design (ADC_SAMPLE_RATE_HZ / ADC_CHANNEL_COUNT).
+ *
+ * Measured note: host capture reads ~23 kSa/s (~91 pkt/s) rather than exactly
+ * 20 k. tim3_reload_for_rate() computes the reload from PCLK1 and the live
+ * APB1 prescaler, but the H7 also has the RCC_CFGR TIMPRE bit which can raise
+ * the timer kernel clock beyond that; we don't read TIMPRE here, so the true
+ * rate runs a little above target. Harmless (still well under the UART
+ * ceiling, stream is gap-free). TODO(next dev): factor TIMPRE in for exact. */
+#define SAMPLE_RATE_HZ   10000U
 
 UART_HandleTypeDef huart3;
 ADC_HandleTypeDef  hadc1;
@@ -120,17 +132,32 @@ static void uart3_init(void)
   HAL_NVIC_EnableIRQ(USART3_IRQn);
 }
 
+/* Compute the TIM3 auto-reload value for a target sample rate from the real
+ * timer kernel clock. STM32 rule: a TIMx on APB1 is clocked at PCLK1 when the
+ * APB1 prescaler is /1, otherwise at 2 x PCLK1. We read PCLK1 and the live
+ * prescaler from RCC rather than assuming the clock tree, so the rate stays
+ * correct across clock reconfigurations (this is why earlier the rate didn't
+ * match a naive SYSCLK-based guess). Reload register is (ticks_per_period - 1). */
+static uint32_t tim3_reload_for_rate(uint32_t rate_hz)
+{
+  uint32_t pclk1 = HAL_RCC_GetPCLK1Freq();
+  uint32_t ppre1 = (RCC->D2CFGR & RCC_D2CFGR_D2PPRE1_Msk);
+  uint32_t tim_clk = (ppre1 < RCC_D2CFGR_D2PPRE1_DIV2) ? pclk1 : (2U * pclk1);
+  uint32_t ticks = tim_clk / rate_hz;
+  return (ticks > 0U) ? (ticks - 1U) : 0U;
+}
+
 /* TIM3 free-runs and emits a TRGO pulse on each counter overflow (reload);
  * that TRGO is wired as the ADC's external trigger, so the ADC takes exactly
- * one sample per overflow. Prescaler 0 + reload = TIM3_RELOAD_PERIOD-1 sets
- * the period (see the TIM3_RELOAD_PERIOD note for the rate caveat). */
+ * one sample per overflow. Prescaler 0; the reload sets the period at the
+ * timer kernel clock (computed above for SAMPLE_RATE_HZ). */
 static void tim3_init(void)
 {
   __HAL_RCC_TIM3_CLK_ENABLE();
   htim3.Instance = TIM3;
   htim3.Init.Prescaler         = 0;
   htim3.Init.CounterMode       = TIM_COUNTERMODE_UP;
-  htim3.Init.Period            = TIM3_RELOAD_PERIOD - 1U;
+  htim3.Init.Period            = tim3_reload_for_rate(SAMPLE_RATE_HZ);
   htim3.Init.ClockDivision     = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK) { Error_Handler(); }
@@ -152,9 +179,12 @@ static void adc1_init(void)
 
   __HAL_RCC_ADC12_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+  /* Both ADC inputs as analog: PA3 (zener, INP15) and PC0 (baseline, INP10). */
   GPIO_InitTypeDef g = {0};
-  g.Pin = GPIO_PIN_3; g.Mode = GPIO_MODE_ANALOG; g.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &g);
+  g.Mode = GPIO_MODE_ANALOG; g.Pull = GPIO_NOPULL;
+  g.Pin = GPIO_PIN_3; HAL_GPIO_Init(GPIOA, &g);
+  g.Pin = GPIO_PIN_0; HAL_GPIO_Init(GPIOC, &g);
 
   /* ADC DMA: DMA1 Stream1, ADC1 request, circular, half-word. */
   hdma_adc1.Instance                 = DMA1_Stream1;
@@ -175,12 +205,14 @@ static void adc1_init(void)
   hadc1.Instance = ADC1;
   hadc1.Init.ClockPrescaler        = ADC_CLOCK_ASYNC_DIV4;
   hadc1.Init.Resolution            = ADC_RESOLUTION_12B;
-  hadc1.Init.ScanConvMode          = ADC_SCAN_DISABLE;
+  hadc1.Init.ScanConvMode          = ADC_SCAN_ENABLE;   /* 2-channel group */
   hadc1.Init.EOCSelection          = ADC_EOC_SINGLE_CONV;
   hadc1.Init.LowPowerAutoWait      = DISABLE;
-  hadc1.Init.ContinuousConvMode    = DISABLE;          /* timer-paced */
-  hadc1.Init.NbrOfConversion       = 1;
+  hadc1.Init.ContinuousConvMode    = DISABLE;           /* timer-paced */
+  hadc1.Init.NbrOfConversion       = 2;                 /* zener + baseline */
   hadc1.Init.DiscontinuousConvMode = DISABLE;
+  /* One TRGO triggers the whole 2-conversion scan, so each trigger emits a
+   * [zener, baseline] pair into the DMA buffer at SAMPLE_RATE_HZ per channel. */
   hadc1.Init.ExternalTrigConv      = ADC_EXTERNALTRIG_T3_TRGO;
   hadc1.Init.ExternalTrigConvEdge  = ADC_EXTERNALTRIGCONVEDGE_RISING;
   hadc1.Init.ConversionDataManagement = ADC_CONVERSIONDATA_DMA_CIRCULAR;
@@ -192,13 +224,21 @@ static void adc1_init(void)
   if (HAL_ADCEx_Calibration_Start(&hadc1, ADC_CALIB_OFFSET,
                                   ADC_SINGLE_ENDED) != HAL_OK) { Error_Handler(); }
 
+  /* Rank order defines the interleave the host de-multiplexes:
+   *   rank 1 -> host channel 0 (zener, PA3/INP15)
+   *   rank 2 -> host channel 1 (baseline, PC0/INP10) */
   ADC_ChannelConfTypeDef ch = {0};
-  ch.Channel      = ADC_CHANNEL_15;          /* PA3 */
-  ch.Rank         = ADC_REGULAR_RANK_1;
   ch.SamplingTime = ADC_SAMPLETIME_64CYCLES_5;
   ch.SingleDiff   = ADC_SINGLE_ENDED;
   ch.OffsetNumber = ADC_OFFSET_NONE;
   ch.Offset       = 0;
+
+  ch.Channel = ADC_CHANNEL_15;               /* PA3 - zener */
+  ch.Rank    = ADC_REGULAR_RANK_1;
+  if (HAL_ADC_ConfigChannel(&hadc1, &ch) != HAL_OK) { Error_Handler(); }
+
+  ch.Channel = ADC_CHANNEL_10;               /* PC0 - baseline */
+  ch.Rank    = ADC_REGULAR_RANK_2;
   if (HAL_ADC_ConfigChannel(&hadc1, &ch) != HAL_OK) { Error_Handler(); }
 }
 
