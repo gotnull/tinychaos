@@ -42,24 +42,73 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined library search paths
 )
 
-# Add sources to executable
+# ---- Transport selection (UART default, or USB CDC) ----------------------
+# UART : stream over USART3 on the on-board ST-LINK VCP (CN1). One cable,
+#        nothing to enable in CubeMX. This is the tested default.
+# USB  : stream over native USB CDC on CN13. Needs the CubeMX-generated USB
+#        device stack added (see the USB branch below + entropy_app.c header).
+# Switch at configure time:   cmake -DENTROPY_TRANSPORT=USB ...   (or edit here)
+set(ENTROPY_TRANSPORT "UART" CACHE STRING "Stream transport: UART or USB")
+
+# Sources common to both transports.
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # tinychaos application glue (board-specific)
     Core/Src/entropy_app.c
     # Portable wire-protocol module (single source of truth, shared with the
     # ESP32 firmware + host tools). Referenced from ../Core, not duplicated.
     ${CMAKE_CURRENT_SOURCE_DIR}/../Core/Src/entropy_protocol.c
-    # Non-blocking UART TX ring (drains via DMA). Its ring buffer lives in
-    # .bss, which the linker now places in AXI SRAM (DMA-reachable).
-    ${CMAKE_CURRENT_SOURCE_DIR}/../Core/Src/serial_stream.c
-    # USART3 + ADC1 HAL drivers: not auto-included because those peripherals
-    # aren't in the .ioc (we bring them up by hand in entropy_app.c). They
-    # compile under the HAL_*_MODULE_ENABLED defines below.
-    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_uart.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_uart_ex.c
+    # ADC1 HAL driver: ADC isn't in the .ioc (brought up by hand in
+    # entropy_app.c); compiles under HAL_ADC_MODULE_ENABLED below.
     ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_adc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_adc_ex.c
 )
+
+if(ENTROPY_TRANSPORT STREQUAL "USB")
+    message(STATUS "tinychaos transport: USB CDC (CN13)")
+    target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+        # Non-blocking USB CDC TX ring (same init/send/pump/on_tx_complete API
+        # as serial_stream, so entropy_app.c is unchanged).
+        ${CMAKE_CURRENT_SOURCE_DIR}/../Core/Src/usb_stream.c
+        # USB OTG FS HAL driver (PCD) - ships with the HAL, not in the .ioc.
+        ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_pcd.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_pcd_ex.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_ll_usb.c
+        #
+        # >>> ADD YOUR CubeMX-GENERATED USB DEVICE STACK HERE <<<
+        # Generate once (CubeMX: USB_OTG_FS = Device_Only + USB Device CDC
+        # middleware, set the 48 MHz USB clock, regenerate), then add these and
+        # their include dirs below:
+        #   USB_DEVICE/App/usb_device.c  usbd_desc.c  usbd_cdc_if.c
+        #   USB_DEVICE/Target/usbd_conf.c
+        #   .../STM32_USB_Device_Library/Core/Src/usbd_core.c usbd_ctlreq.c usbd_ioreq.c
+        #   .../STM32_USB_Device_Library/Class/CDC/Src/usbd_cdc.c
+        # Also add OTG_FS_IRQHandler (-> HAL_PCD_IRQHandler) per the H7 USB demo,
+        # and have usbd_cdc_if.c's CDC_TransmitCplt_FS call usb_stream_on_tx_complete().
+    )
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
+        HAL_ADC_MODULE_ENABLED
+        HAL_TIM_MODULE_ENABLED
+        HAL_PCD_MODULE_ENABLED
+        ENTROPY_TRANSPORT_USB
+    )
+else()
+    message(STATUS "tinychaos transport: UART (USART3 / ST-LINK VCP)")
+    target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+        # Non-blocking UART TX ring (drains via DMA). Ring lives in .bss, which
+        # the linker places in AXI SRAM (DMA-reachable).
+        ${CMAKE_CURRENT_SOURCE_DIR}/../Core/Src/serial_stream.c
+        # USART3 HAL driver: not auto-included (USART3 isn't in the .ioc; brought
+        # up by hand in entropy_app.c). Compiles under HAL_UART_MODULE_ENABLED.
+        ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_uart.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_uart_ex.c
+    )
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
+        HAL_UART_MODULE_ENABLED
+        HAL_ADC_MODULE_ENABLED
+        HAL_TIM_MODULE_ENABLED
+        ENTROPY_TRANSPORT_UART
+    )
+endif()
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
@@ -67,16 +116,8 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../Core/Inc   # entropy_config.h, entropy_protocol.h
 )
 
-# Add project symbols (macros)
-target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
-    # USART3 is brought up by hand in entropy_app.c (not via CubeMX), so the
-    # HAL UART module isn't auto-enabled in stm32h7xx_hal_conf.h. Enable it
-    # here so the build stays correct across CubeMX regenerations.
-    HAL_UART_MODULE_ENABLED
-    HAL_ADC_MODULE_ENABLED
-    HAL_TIM_MODULE_ENABLED
-    ENTROPY_TRANSPORT_UART
-)
+# (Per-transport HAL module defines + ENTROPY_TRANSPORT_* are set in the
+# if/else block above, so the build stays correct for either transport.)
 
 # The TIM HAL driver (stm32h7xx_hal_tim.c) lives in the generated STM32_Drivers
 # object library, not our target, so our target-level define above doesn't

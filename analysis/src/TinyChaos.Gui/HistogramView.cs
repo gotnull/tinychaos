@@ -63,10 +63,13 @@ public sealed class HistogramView : Control
             bounds.Width - LeftAxisWidth - Padding,
             bounds.Height - BottomAxisHeight - Padding);
 
-        DrawAxes(context, plotRect);
-
         var model = Model;
-        if (model is null) return;
+        if (model is null)
+        {
+            DrawAxes(context, plotRect, Bins);
+            return;
+        }
+        DrawAxes(context, plotRect, model.Bins);
 
         long max = 1;
         var snapshots = new long[model.ChannelCount][];
@@ -123,12 +126,14 @@ public sealed class HistogramView : Control
         // the middle tick.
     }
 
-    private static void DrawAxes(DrawingContext context, Rect plotRect)
+    private static void DrawAxes(DrawingContext context, Rect plotRect, int bins)
     {
-        int[] codes = { 0, 1024, 2048, 3072, 4095 };
+        // Ticks at 0 / quarter / half / three-quarter / max, derived from the
+        // bin count (12-bit -> 0,1024,2048,3072,4095; 16-bit -> ...,65535).
+        int[] codes = { 0, bins / 4, bins / 2, 3 * bins / 4, bins - 1 };
         foreach (var code in codes)
         {
-            double x = plotRect.Left + (code / (double)(Bins - 1)) * plotRect.Width;
+            double x = plotRect.Left + (code / (double)(bins - 1)) * plotRect.Width;
             context.DrawLine(GridPen, new Point(x, plotRect.Top), new Point(x, plotRect.Bottom));
 
             var label = new FormattedText(

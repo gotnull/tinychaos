@@ -145,6 +145,54 @@ For other distros: install equivalent packages (often called `arm-none-eabi-gcc-
 
    (The CubeMX-generated Makefile typically provides this target; if it does not, run `st-flash write build/tinychaos.bin 0x08000000` directly.)
 
+## Transport (UART vs USB CDC)
+
+The capture is framed identically regardless of how the bytes leave the chip, so
+the host (GUI/CLI) decodes either transport with **zero changes** - it just opens
+a serial port. The transport is a **compile-time choice** in the
+`nucleo-h753zi/` CMake project, selected with `-DENTROPY_TRANSPORT`:
+
+| | `UART` (default) | `USB` (CDC) |
+|---|---|---|
+| Port | USART3 on the ST-LINK VCP | native USB on **CN13** (`USB_OTG_FS`) |
+| Cables | one (CN1: power + flash + data) | two (CN1 power+flash, **CN13** data) |
+| Host sees | the ST-LINK `usbmodem`/`COM` | a **new** `usbmodem`/`COM` (the CDC port) |
+| Throughput | ~92 kB/s @ 921600 | ~1 MB/s |
+| Setup | nothing - it's the tested default | needs the USB device stack (below) |
+
+**Build UART (default):**
+```
+cd nucleo-h753zi && ./flash.sh          # mac/linux   (flash.ps1 on Windows)
+```
+
+**Build USB CDC:**
+```
+cmake -B build/Debug -G Ninja -DENTROPY_TRANSPORT=USB \
+      -DCMAKE_TOOLCHAIN_FILE=cmake/gcc-arm-none-eabi.cmake -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/Debug
+```
+The USB build needs the **CubeMX-generated USB device stack** added to the
+project (it is not in the barebones `.ioc`). One-time setup:
+
+1. Open `tinychaos.ioc` in CubeMX, enable **USB_OTG_FS = Device_Only** plus the
+   **USB Device / Communication Device Class (CDC)** middleware, set the USB
+   48 MHz clock, and regenerate.
+2. Add the generated sources + include dirs to `CMakeLists.txt` (there's a
+   `>>> ADD YOUR ... USB DEVICE STACK HERE <<<` marker in the `USB` branch
+   listing exactly which files: `usb_device.c`, `usbd_desc.c`, `usbd_cdc_if.c`,
+   `usbd_conf.c`, and the USB Device Library core + `usbd_cdc.c`).
+3. Add `OTG_FS_IRQHandler` (calls `HAL_PCD_IRQHandler`) and make
+   `CDC_TransmitCplt_FS` (in `usbd_cdc_if.c`) call `usb_stream_on_tx_complete()`.
+
+`entropy_app.c` already handles the rest: when `ENTROPY_TRANSPORT_USB` is
+defined it calls `MX_USB_DEVICE_Init()` and sends via `usb_stream_send()`
+instead of the USART3 path - the ADC/TIM/DMA capture is identical either way.
+
+Wiring for the USB build (NUCLEO-H753ZI): power + flash over **CN1** (ST-LINK)
+as usual, and run a **second** USB cable from **CN13** to the host for the CDC
+link. CN13 is data-only (it does not power the board). Ensure the USB jumper
+(UM: JP4) is set, or `vbus_sensing_enable = DISABLE` in the USB config.
+
 ## Verifying the link with the host
 
 After flashing the counter-pattern build (step 5), with the board plugged into the host:

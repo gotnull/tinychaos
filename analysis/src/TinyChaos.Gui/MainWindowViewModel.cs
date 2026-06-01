@@ -136,6 +136,28 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public WaveformModel Waveform { get; }
     public HistogramModel Histogram { get; }
 
+    // ADC sample resolution. The firmware streams raw ADC codes; this tells the
+    // GUI how to scale the waveform Y-axis and how many histogram bins to use.
+    // 12-bit (0..4095) is the project default; 16-bit (0..65535) is for boards
+    // configured at full H7 ADC resolution. Switching rebins the histogram in
+    // place (same model instance) and rescales the waveform live.
+    public int[] ResolutionOptions { get; } = { 12, 16 };
+
+    [ObservableProperty] private int _resolutionBits = 12;
+
+    /// <summary>Full-scale code count for the waveform Y-axis (1 &lt;&lt; bits).</summary>
+    public int WaveformFullScale => 1 << ResolutionBits;
+
+    /// <summary>Caption shown by the DISTRIBUTION card header.</summary>
+    public string AdcRangeCaption => $"ADC code: 0 to {(1 << ResolutionBits) - 1} ({ResolutionBits}-bit)";
+
+    partial void OnResolutionBitsChanged(int value)
+    {
+        Histogram.Reconfigure(value);
+        OnPropertyChanged(nameof(WaveformFullScale));
+        OnPropertyChanged(nameof(AdcRangeCaption));
+    }
+
     public MainWindowViewModel()
     {
         Waveform = new WaveformModel(channelCount: 2, windowSamples: 2048);

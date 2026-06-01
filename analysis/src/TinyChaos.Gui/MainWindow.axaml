@@ -101,6 +101,19 @@
                                         <TextBlock Classes="caption" Text="channel 1 (baseline)"
                                             VerticalAlignment="Center" />
                                     </StackPanel>
+                                    <!-- ADC resolution: scales the waveform Y-axis and rebins the
+                                         histogram. 12-bit (0..4095) default; 16-bit (0..65535) for
+                                         boards streaming full-resolution H7 ADC codes. -->
+                                    <TextBlock Classes="caption" Text="bits" VerticalAlignment="Center" />
+                                    <ComboBox ItemsSource="{Binding ResolutionOptions}"
+                                        SelectedItem="{Binding ResolutionBits, Mode=TwoWay}"
+                                        MinHeight="28" VerticalAlignment="Center">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate x:CompileBindings="False">
+                                                <TextBlock Text="{Binding StringFormat='{}{0}-bit'}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
                                     <!-- Captures the whole app to a shareable MP4 clip (H.264,
                                          Telegram-friendly) via ffmpeg. Click handled in code-behind:
                                          rendering a control to a bitmap is a View concern (needs the
@@ -112,7 +125,8 @@
                             </Grid>
                             <Border Grid.Row="2" Classes="chartHolder">
                                 <local:WaveformView x:Name="WaveformControl"
-                                    Model="{Binding Waveform}" />
+                                    Model="{Binding Waveform}"
+                                    FullScale="{Binding WaveformFullScale}" />
                             </Border>
                         </Grid>
                     </Border>
@@ -123,7 +137,7 @@
                             <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
                                 <TextBlock Grid.Column="0" Classes="h1" Text="DISTRIBUTION" />
                                 <TextBlock Grid.Column="1" Classes="caption"
-                                    Text="ADC code: 0 to 4095 (12-bit)" />
+                                    Text="{Binding AdcRangeCaption}" />
                             </Grid>
                             <Border Grid.Row="2" Classes="chartHolder">
                                 <local:HistogramView Model="{Binding Histogram}" />

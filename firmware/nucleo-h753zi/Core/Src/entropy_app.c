@@ -36,7 +36,38 @@
 #include "main.h"               /* CubeMX HAL */
 #include "entropy_config.h"
 #include "entropy_protocol.h"
-#include "serial_stream.h"      /* non-blocking UART TX ring (DMA) */
+
+/* ---- Transport selection (compile-time) --------------------------------
+ * The stream is framed identically regardless of transport; only the path the
+ * bytes take off-chip differs. Pick ONE via a compile definition (set in
+ * CMakeLists.txt):
+ *
+ *   ENTROPY_TRANSPORT_UART  (default) - USART3 on the on-board ST-LINK VCP
+ *       (PD8/PD9), TX over DMA. One USB cable (CN1), nothing to enable in
+ *       CubeMX. Practical ceiling ~92 kB/s at 921600 baud.
+ *
+ *   ENTROPY_TRANSPORT_USB             - native USB CDC on CN13 (USB_OTG_FS).
+ *       Requires the CubeMX-generated USB device stack (usb_device.c, usbd_*)
+ *       plus usb_stream.c in the build, and MX_USB_DEVICE_Init(). Practical
+ *       ~1 MB/s. See firmware/README.md, section "Transport (UART vs USB CDC)".
+ *
+ * serial_stream and usb_stream expose the same tiny API (init / send / pump /
+ * on_tx_complete), so the capture code below never refers to a transport
+ * directly - it uses the TX_* macros set here. */
+#if defined(ENTROPY_TRANSPORT_USB)
+  #include "usb_device.h"        /* MX_USB_DEVICE_Init (CubeMX-generated)     */
+  #include "usb_stream.h"        /* non-blocking USB CDC TX ring              */
+  #define TX_INIT()      usb_stream_init()
+  #define TX_SEND(p, n)  usb_stream_send((p), (n))
+  #define TX_PUMP()      usb_stream_pump()
+#elif defined(ENTROPY_TRANSPORT_UART)
+  #include "serial_stream.h"     /* non-blocking UART TX ring (DMA)           */
+  #define TX_INIT()      serial_stream_init()
+  #define TX_SEND(p, n)  serial_stream_send((p), (n))
+  #define TX_PUMP()      serial_stream_pump()
+#else
+  #error "Define ENTROPY_TRANSPORT_UART or ENTROPY_TRANSPORT_USB (see CMakeLists.txt)"
+#endif
 
 /* Target ADC sample rate. The TIM3 reload that achieves it is computed at
  * runtime from the *actual* timer kernel clock (tim3_reload_for_rate), not a
@@ -58,11 +89,13 @@
  * ceiling, stream is gap-free). TODO(next dev): factor TIMPRE in for exact. */
 #define SAMPLE_RATE_HZ   10000U
 
-UART_HandleTypeDef huart3;
 ADC_HandleTypeDef  hadc1;
 TIM_HandleTypeDef  htim3;
-DMA_HandleTypeDef  hdma_usart3_tx;
 DMA_HandleTypeDef  hdma_adc1;
+#if defined(ENTROPY_TRANSPORT_UART)
+UART_HandleTypeDef huart3;
+DMA_HandleTypeDef  hdma_usart3_tx;
+#endif
 
 static uint32_t s_seq = 0;
 static uint8_t  s_pkt[ENTROPY_PACKET_MAX_BYTES];
@@ -88,6 +121,7 @@ static void led_init(void)
   HAL_GPIO_Init(LD1_PORT, &g);
 }
 
+#if defined(ENTROPY_TRANSPORT_UART)
 /* USART3 on the VCP pins (PD8=TX, PD9=RX, AF7) + its TX DMA stream. */
 static void uart3_init(void)
 {
@@ -131,6 +165,7 @@ static void uart3_init(void)
   HAL_NVIC_SetPriority(USART3_IRQn, 6, 0);
   HAL_NVIC_EnableIRQ(USART3_IRQn);
 }
+#endif /* ENTROPY_TRANSPORT_UART */
 
 /* Compute the TIM3 auto-reload value for a target sample rate from the real
  * timer kernel clock. STM32 rule: a TIMx on APB1 is clocked at PCLK1 when the
@@ -245,8 +280,12 @@ static void adc1_init(void)
 void entropy_app_init(void)
 {
   led_init();
-  uart3_init();
-  serial_stream_init();
+#if defined(ENTROPY_TRANSPORT_UART)
+  uart3_init();              /* USART3 + its TX DMA */
+#elif defined(ENTROPY_TRANSPORT_USB)
+  MX_USB_DEVICE_Init();      /* CubeMX-generated USB CDC device on CN13 */
+#endif
+  TX_INIT();                 /* transport TX ring (serial_stream / usb_stream) */
   tim3_init();
   adc1_init();
 
@@ -265,13 +304,13 @@ static void emit_half(const uint16_t *half)
                                          s_seq++, now_us,
                                          half, PACKET_SAMPLE_COUNT);
   if (n > 0) {
-    (void)serial_stream_send(s_pkt, n);
+    (void)TX_SEND(s_pkt, n);
   }
 }
 
 void entropy_app_task(void)
 {
-  serial_stream_pump();   /* keep the TX ring draining */
+  TX_PUMP();   /* keep the TX ring draining */
 
   if (s_half_ready) {
     s_half_ready = 0;
@@ -297,6 +336,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
   if (hadc->Instance == ADC1) s_full_ready = 1;
 }
 
+#if defined(ENTROPY_TRANSPORT_UART)
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
   if (huart->Instance == USART3) serial_stream_on_tx_complete();
@@ -306,13 +346,18 @@ void DMA1_Stream0_IRQHandler(void)   /* USART3 TX */
 {
   HAL_DMA_IRQHandler(&hdma_usart3_tx);
 }
+#endif /* ENTROPY_TRANSPORT_UART */
+/* (USB CDC build: CDC_TransmitCplt_FS in usbd_cdc_if.c calls
+ *  usb_stream_on_tx_complete() - no HAL_UART callback needed.) */
 
-void DMA1_Stream1_IRQHandler(void)   /* ADC1 */
+void DMA1_Stream1_IRQHandler(void)   /* ADC1 (both transports) */
 {
   HAL_DMA_IRQHandler(&hdma_adc1);
 }
 
+#if defined(ENTROPY_TRANSPORT_UART)
 void USART3_IRQHandler(void)
 {
   HAL_UART_IRQHandler(&huart3);
 }
+#endif /* ENTROPY_TRANSPORT_UART */

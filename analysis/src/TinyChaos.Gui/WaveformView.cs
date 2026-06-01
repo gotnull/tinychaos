@@ -9,13 +9,23 @@ namespace TinyChaos.Gui;
 
 /// <summary>
 /// Live waveform canvas. Polls its model on a 30 Hz dispatcher timer and
-/// renders the per-channel samples as line traces over a faint reference
-/// grid. Y axis maps to the 12-bit ADC code range (0..4095) with tick
-/// labels at 0, 1024, 2048, 3072, 4095.
+/// renders the per-channel samples as line traces over a faint reference grid.
+/// The Y axis spans the full ADC code range, set by <see cref="FullScale"/>
+/// (4096 for 12-bit, 65536 for 16-bit); tick labels are derived from it.
 /// </summary>
 public sealed class WaveformView : Control
 {
-    private const int FullScale = 4096; // 12-bit
+    /// <summary>Full-scale code count (4096 = 12-bit, 65536 = 16-bit). Bindable
+    /// so the GUI's resolution toggle can rescale the Y axis live.</summary>
+    public static readonly StyledProperty<int> FullScaleProperty =
+        AvaloniaProperty.Register<WaveformView, int>(nameof(FullScale), 4096);
+
+    public int FullScale
+    {
+        get => GetValue(FullScaleProperty);
+        set => SetValue(FullScaleProperty, value);
+    }
+
     private const double LeftAxisWidth = 36;
     private const double BottomAxisHeight = 18;
     private const double Padding = 6;
@@ -47,6 +57,12 @@ public sealed class WaveformView : Control
 
     private readonly DispatcherTimer _redrawTimer;
 
+    static WaveformView()
+    {
+        // Rescale immediately when the resolution toggle changes FullScale.
+        AffectsRender<WaveformView>(FullScaleProperty);
+    }
+
     public WaveformView()
     {
         // 60 fps. Aligns with standard 60 Hz displays; on ProMotion (120 Hz)
@@ -73,7 +89,8 @@ public sealed class WaveformView : Control
             bounds.Width - LeftAxisWidth - Padding,
             bounds.Height - BottomAxisHeight - Padding);
 
-        DrawAxes(context, plotRect);
+        int fullScale = Math.Max(2, FullScale);
+        DrawAxes(context, plotRect, fullScale);
 
         var model = Model;
         if (model is null) return;
@@ -85,7 +102,7 @@ public sealed class WaveformView : Control
 
             var pen = new Pen(ChannelBrushes[ch % ChannelBrushes.Length], 1.2);
             double xScale = plotRect.Width / Math.Max(1, samples.Length - 1);
-            double yScale = plotRect.Height / FullScale;
+            double yScale = plotRect.Height / fullScale;
 
             var geometry = new StreamGeometry();
             using (var gctx = geometry.Open())
@@ -112,17 +129,19 @@ public sealed class WaveformView : Control
                       bounds.Height - BottomAxisHeight + 2));
     }
 
-    private static void DrawAxes(DrawingContext context, Rect plotRect)
+    private static void DrawAxes(DrawingContext context, Rect plotRect, int fullScale)
     {
         // Mid-rail dashed line
         double mid = plotRect.Top + plotRect.Height / 2;
         context.DrawLine(MidRailPen, new Point(plotRect.Left, mid), new Point(plotRect.Right, mid));
 
-        // Y-axis ticks at 0 / 1024 / 2048 / 3072 / 4095
-        int[] codes = { 0, 1024, 2048, 3072, 4095 };
+        // Y-axis ticks at 0 / quarter / half / three-quarter / max, derived from
+        // the full-scale range (12-bit -> 0,1024,2048,3072,4095; 16-bit ->
+        // 0,16384,32768,49152,65535).
+        int[] codes = { 0, fullScale / 4, fullScale / 2, 3 * fullScale / 4, fullScale - 1 };
         foreach (var code in codes)
         {
-            double y = plotRect.Bottom - (code / (double)FullScale) * plotRect.Height;
+            double y = plotRect.Bottom - (code / (double)fullScale) * plotRect.Height;
             context.DrawLine(GridPen, new Point(plotRect.Left, y), new Point(plotRect.Right, y));
 
             var label = new FormattedText(
