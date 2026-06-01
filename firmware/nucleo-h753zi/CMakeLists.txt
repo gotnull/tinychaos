@@ -49,6 +49,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Portable wire-protocol module (single source of truth, shared with the
     # ESP32 firmware + host tools). Referenced from ../Core, not duplicated.
     ${CMAKE_CURRENT_SOURCE_DIR}/../Core/Src/entropy_protocol.c
+    # Non-blocking UART TX ring (drains via DMA). Its ring buffer lives in
+    # .bss, which the linker now places in AXI SRAM (DMA-reachable).
+    ${CMAKE_CURRENT_SOURCE_DIR}/../Core/Src/serial_stream.c
     # USART3 + ADC1 HAL drivers: not auto-included because those peripherals
     # aren't in the .ioc (we bring them up by hand in entropy_app.c). They
     # compile under the HAL_*_MODULE_ENABLED defines below.
