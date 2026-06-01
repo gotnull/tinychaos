@@ -27,8 +27,11 @@
  */
 #ifdef ENTROPY_TRANSPORT_USB
 
-#include "usbd_cdc_if.h" /* CDC_Transmit_FS, USBD_OK */
-#include "usb_device.h"  /* hUsbDeviceFS, USBD_STATE_CONFIGURED */
+#include "usbd_cdc_if.h" /* CDC_Transmit_FS, USBD_OK, USBD_STATE_CONFIGURED */
+
+/* The device handle is defined in the CubeMX-generated usb_device.c but not
+ * declared extern in its header, so declare it here to read dev_state. */
+extern USBD_HandleTypeDef hUsbDeviceFS;
 
 /* Number of packet slots in the ring. With PACKET_SAMPLE_COUNT = 256 and
  * the default 64-78 packets/sec, 8 slots give about 100 ms of latency
@@ -91,6 +94,17 @@ bool usb_stream_send(const uint8_t *data, size_t len)
 void usb_stream_pump(void)
 {
     if (s_tx_in_flight) {
+        return;
+    }
+    /* Do not transmit until the host has CONFIGURED the device. Calling
+     * CDC_Transmit_FS before configuration sets TxState=1 inside the USB stack
+     * and fires USBD_LL_Transmit at an inactive endpoint: the data is lost, the
+     * completion callback never runs, and both TxState and s_tx_in_flight stay
+     * stuck - wedging the stream forever (enumerates, but 0 bytes ever arrive).
+     * Capture starts in ~13 ms but enumeration takes ~100 ms, so without this
+     * guard the very first packet wedges it. Pre-config packets just age out of
+     * the ring; streaming begins cleanly once the host connects. */
+    if (hUsbDeviceFS.dev_state != USBD_STATE_CONFIGURED) {
         return;
     }
     if (ring_count() == 0) {

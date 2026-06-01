@@ -212,6 +212,12 @@ static void adc1_init(void)
   if (HAL_RCCEx_PeriphCLKConfig(&pclk) != HAL_OK) { Error_Handler(); }
 
   __HAL_RCC_ADC12_CLK_ENABLE();
+  /* The ADC streams through DMA1_Stream1, so DMA1 must be clocked. Enable it
+   * HERE rather than relying on another peripheral's init: the UART transport's
+   * uart3_init() also enables DMA1 (for USART3 TX), which masked this - but the
+   * USB CDC build never calls uart3_init(), so without this the ADC DMA is
+   * unclocked and capture silently produces nothing (or wedges init). */
+  __HAL_RCC_DMA1_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
   /* Both ADC inputs as analog: PA3 (zener, INP15) and PC0 (baseline, INP10). */
