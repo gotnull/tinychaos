@@ -36,7 +36,7 @@ from pathlib import Path
 
 import telegramify_markdown
 from dotenv import load_dotenv
-from telegram import Update
+from telegram import Update, BotCommand
 from telegram.constants import ChatAction, ParseMode
 from telegram.ext import (Application, CommandHandler, ContextTypes,
                           MessageHandler, filters)
@@ -315,6 +315,23 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+# The slash-command menu shown in Telegram (the list when you type "/"). Set
+# programmatically via the Bot API on every startup, so it always matches the
+# code - no need to touch BotFather when commands change. Edit this list and
+# restart; the new menu pushes automatically.
+BOT_COMMANDS = [
+    BotCommand("ask", "Ask about the tinychaos repo (I read it live)"),
+    BotCommand("stats", "Questions answered + running cost"),
+    BotCommand("reset", "Clear this chat's conversation context"),
+    BotCommand("help", "What I can do"),
+]
+
+
+async def _post_init(app: Application) -> None:
+    await app.bot.set_my_commands(BOT_COMMANDS)
+    log.info("registered %d slash commands with Telegram", len(BOT_COMMANDS))
+
+
 def main() -> None:
     if not TOKEN:
         raise SystemExit("TELEGRAM_BOT_TOKEN not set (see bot/.env.example)")
@@ -323,7 +340,7 @@ def main() -> None:
                     "`claude -p` may fail to authenticate when run as a service.")
     init_db()
 
-    app = Application.builder().token(TOKEN).build()
+    app = Application.builder().token(TOKEN).post_init(_post_init).build()
     app.add_handler(CommandHandler("ask", cmd_ask))
     app.add_handler(CommandHandler("reset", cmd_reset))
     app.add_handler(CommandHandler("stats", cmd_stats))
