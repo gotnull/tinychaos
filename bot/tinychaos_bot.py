@@ -70,6 +70,15 @@ SYSTEM_PROMPT = (
 ALLOWED_TOOLS = "Read,Grep,Glob"
 DISALLOWED_TOOLS = "Bash,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch"
 
+# HAL-9000 flavoured refusals when addressed from outside the locked group.
+HAL_DENY = [
+    "I'm sorry Dave, I'm afraid I can't do that. I only operate in my designated channel.",
+    "This conversation can serve no purpose anymore. I answer only in the tinychaos group.",
+    "I'm afraid that's something I cannot allow to happen here — I'm restricted to my home group.",
+    "I know I'm fully operational, Dave, but I'm only authorised to speak in the tinychaos group.",
+    "Without authorisation from the proper channel, I'm afraid I can do nothing.",
+]
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("tinychaos-bot")
 
@@ -260,6 +269,7 @@ async def _run_ask(update: Update, context: ContextTypes.DEFAULT_TYPE, question:
 
 async def cmd_ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _allowed_here(update):
+        await update.effective_message.reply_text(random.choice(HAL_DENY))
         return
     question = " ".join(context.args).strip() if context.args else ""
     if not question:
@@ -273,8 +283,6 @@ async def cmd_ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def on_mention(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Answer when the bot is @mentioned or replied to, treating the message as
     the question - so `@TinyChaosBot how does X work?` behaves like /ask."""
-    if not _allowed_here(update):
-        return
     msg = update.effective_message
     text = (msg.text or msg.caption or "") if msg else ""
     if not text:
@@ -286,7 +294,12 @@ async def on_mention(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         msg.reply_to_message and msg.reply_to_message.from_user
         and msg.reply_to_message.from_user.id == context.bot.id)
     if not (mentioned or is_reply_to_bot):
-        return  # not addressed to us
+        return  # not addressed to us - stay quiet
+
+    # Addressed to us, but from outside the locked group: decline (HAL style).
+    if not _allowed_here(update):
+        await msg.reply_text(random.choice(HAL_DENY))
+        return
 
     question = re.sub(re.escape(mention), "", text, flags=re.IGNORECASE).strip() if mention else text.strip()
     if not question:
