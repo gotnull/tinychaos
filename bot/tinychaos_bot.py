@@ -163,12 +163,55 @@ def db_log(chat_id, title, user_id, username, question, answer, cost) -> None:
 
 
 def db_stats():
+    """Gather a rich snapshot for /stats. Returns a dict; all time math uses
+    UTC ISO strings (matching _now()) so SQLite string comparison is correct."""
+    now = datetime.datetime.utcnow()
+    today = now.date().isoformat()                       # 'YYYY-MM-DD'
+    week_cutoff = (now - datetime.timedelta(days=7)).isoformat(timespec="seconds")
     with _db() as c:
-        total, cost = c.execute(
-            "SELECT COUNT(*), COALESCE(SUM(cost_usd),0) FROM interactions").fetchone()
-        rows = c.execute("SELECT COALESCE(chat_title,'?'), COUNT(*), COALESCE(SUM(cost_usd),0) "
-                         "FROM interactions GROUP BY chat_id ORDER BY 2 DESC LIMIT 8").fetchall()
-    return total, cost, rows
+        total, cost, first_at, last_at = c.execute(
+            "SELECT COUNT(*), COALESCE(SUM(cost_usd),0), MIN(created_at), MAX(created_at) "
+            "FROM interactions").fetchone()
+        today_n, today_cost = c.execute(
+            "SELECT COUNT(*), COALESCE(SUM(cost_usd),0) FROM interactions "
+            "WHERE created_at >= ?", (today,)).fetchone()
+        week_n, week_cost = c.execute(
+            "SELECT COUNT(*), COALESCE(SUM(cost_usd),0) FROM interactions "
+            "WHERE created_at >= ?", (week_cutoff,)).fetchone()
+        chats = c.execute(
+            "SELECT COALESCE(chat_title,'DM'), COUNT(*), COALESCE(SUM(cost_usd),0) "
+            "FROM interactions GROUP BY chat_id ORDER BY 2 DESC LIMIT 5").fetchall()
+        users = c.execute(
+            "SELECT COALESCE(username, user_id), COUNT(*), COALESCE(SUM(cost_usd),0) "
+            "FROM interactions GROUP BY user_id ORDER BY 2 DESC LIMIT 5").fetchall()
+        last = c.execute(
+            "SELECT created_at, COALESCE(username, user_id), COALESCE(chat_title,'DM') "
+            "FROM interactions ORDER BY id DESC LIMIT 1").fetchone()
+        sessions = c.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+    return {
+        "total": total, "cost": cost, "first_at": first_at, "last_at": last_at,
+        "today_n": today_n, "today_cost": today_cost,
+        "week_n": week_n, "week_cost": week_cost,
+        "chats": chats, "users": users, "last": last, "sessions": sessions,
+    }
+
+
+def _fmt_ago(iso: str | None) -> str:
+    """Human 'N min ago' from a UTC ISO timestamp; '' if unknown."""
+    if not iso:
+        return ""
+    try:
+        then = datetime.datetime.fromisoformat(iso)
+    except ValueError:
+        return iso
+    secs = (datetime.datetime.utcnow() - then).total_seconds()
+    if secs < 90:
+        return "just now"
+    if secs < 3600:
+        return f"{int(secs // 60)} min ago"
+    if secs < 86400:
+        return f"{int(secs // 3600)} h ago"
+    return f"{int(secs // 86400)} d ago"
 
 
 def _split(text: str, n: int = 3900):
@@ -358,11 +401,40 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.effective_message.reply_text(
             "I'm sorry Dave, I'm afraid /stats is for the mission commander only.")
         return
-    total, cost, rows = db_stats()
-    lines = [f"questions answered: {total}", f"total cost: ${cost:.2f}"]
-    for title, n, c in rows:
-        lines.append(f"  {title}: {n} (${c:.2f})")
-    await update.effective_message.reply_text("\n".join(lines))
+    s = db_stats()
+    if not s["total"]:
+        await update.effective_message.reply_text(
+            "No questions logged yet. I'm fully operational and awaiting your first query.")
+        return
+
+    avg = s["cost"] / s["total"] if s["total"] else 0.0
+
+    def _bar(label, n, c):  # aligned count/cost columns, full name flows after
+        label = str(label).strip() or "?"
+        if len(label) > 28:                      # only trim genuinely huge names
+            label = label[:27] + "…"
+        return f"`{n:>3} · ${c:6,.2f}`  {label}"
+
+    lines = [
+        "**Tiny Chaos — telemetry**",
+        "",
+        f"**Questions**  {s['total']:,} total · {s['today_n']} today · {s['week_n']} this week",
+        f"**Spend**  ${s['cost']:,.2f} total · ${avg:.3f}/q avg · ${s['today_cost']:,.2f} today",
+        f"**Context**  {s['sessions']} active conversation"
+        f"{'s' if s['sessions'] != 1 else ''}",
+    ]
+    if s["chats"]:
+        lines += ["", "**Top chats**"]
+        lines += [_bar(t, n, c) for t, n, c in s["chats"]]
+    if s["users"]:
+        lines += ["", "**Top askers**"]
+        lines += [_bar(str(u), n, c) for u, n, c in s["users"]]
+    if s["last"]:
+        when, who, where = s["last"]
+        ago = _fmt_ago(when)
+        lines += ["", f"_Last asked {ago} by {who} in {where}_"]
+
+    await _reply(update.effective_message, "\n".join(lines))
 
 
 async def cmd_chatid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
