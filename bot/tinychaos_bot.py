@@ -38,7 +38,8 @@ from pathlib import Path
 import telegramify_markdown
 from dotenv import load_dotenv
 from telegram import (Update, BotCommand, BotCommandScopeDefault,
-                      BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats)
+                      BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats,
+                      BotCommandScopeChat, BotCommandScopeChatMember)
 from telegram.constants import ChatAction, ParseMode
 from telegram.ext import (Application, CommandHandler, ContextTypes,
                           MessageHandler, filters)
@@ -236,7 +237,13 @@ async def _ask_claude(question: str, session_id: str | None) -> tuple[str, str |
 
 
 def _allowed_here(update: Update) -> bool:
-    return ALLOWED_CHATS is None or (update.effective_chat and update.effective_chat.id in ALLOWED_CHATS)
+    if ALLOWED_CHATS is None:
+        return True
+    user = update.effective_user
+    if user and user.id == BOT_OWNER:
+        return True  # the owner can use the bot anywhere, including a DM
+    chat = update.effective_chat
+    return bool(chat and chat.id in ALLOWED_CHATS)
 
 
 async def _typing_loop(bot, chat_id: int) -> None:
@@ -313,8 +320,9 @@ async def on_mention(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     is_reply_to_bot = bool(
         msg.reply_to_message and msg.reply_to_message.from_user
         and msg.reply_to_message.from_user.id == context.bot.id)
-    if not (mentioned or is_reply_to_bot):
-        return  # not addressed to us - stay quiet
+    is_private = bool(update.effective_chat and update.effective_chat.type == "private")
+    if not (mentioned or is_reply_to_bot or is_private):
+        return  # in a group, only respond when addressed; DMs always count
 
     # Addressed to us, but from outside the locked group: decline (HAL style).
     if not _allowed_here(update):
@@ -342,8 +350,13 @@ async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Show how many questions have been answered and the running Claude cost."""
-    if not _allowed_here(update):
+    """Show how many questions have been answered and the running Claude cost.
+    Owner-only, but works anywhere (incl. a DM) - it's gated by user, not chat,
+    so the admin can check it without being in the group."""
+    user = update.effective_user
+    if not user or user.id != BOT_OWNER:
+        await update.effective_message.reply_text(
+            "I'm sorry Dave, I'm afraid /stats is for the mission commander only.")
         return
     total, cost, rows = db_stats()
     lines = [f"questions answered: {total}", f"total cost: ${cost:.2f}"]
@@ -378,21 +391,37 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 # programmatically via the Bot API on every startup, so it always matches the
 # code - no need to touch BotFather when commands change. Edit this list and
 # restart; the new menu pushes automatically.
-BOT_COMMANDS = [
-    BotCommand("ask", "Ask about the Tiny Chaos repo (I read it live)"),
+_ASK = BotCommand("ask", "Ask about the Tiny Chaos repo (I read it live)")
+_HELP = BotCommand("help", "What I can do")
+# Everyone sees just ask + help.
+PUBLIC_COMMANDS = [_ASK, _HELP]
+# The owner also sees the admin commands (stats, reset).
+ADMIN_COMMANDS = [
+    _ASK,
     BotCommand("stats", "Questions answered + running cost"),
-    BotCommand("help", "What I can do"),
-    # /reset is owner-only and deliberately kept out of the public menu.
+    BotCommand("reset", "Clear this chat's conversation context"),
+    _HELP,
 ]
 
 
 async def _post_init(app: Application) -> None:
-    # Set the menu for every scope so it shows in groups AND DMs (the group
-    # "/" list uses the group scope; some clients ignore the default there).
+    bot = app.bot
+    # Public menu for everyone (every scope, so it shows in groups + DMs).
     for scope in (BotCommandScopeDefault(), BotCommandScopeAllGroupChats(),
                   BotCommandScopeAllPrivateChats()):
-        await app.bot.set_my_commands(BOT_COMMANDS, scope=scope)
-    log.info("registered %d slash commands (default+group+private scopes)", len(BOT_COMMANDS))
+        await bot.set_my_commands(PUBLIC_COMMANDS, scope=scope)
+    # Admin menu shown only to the owner: in the owner's DM, and to the owner
+    # specifically inside each allowed group (per-member scope).
+    await bot.set_my_commands(ADMIN_COMMANDS, scope=BotCommandScopeChat(chat_id=BOT_OWNER))
+    for gid in (ALLOWED_CHATS or set()):
+        try:
+            await bot.set_my_commands(
+                ADMIN_COMMANDS,
+                scope=BotCommandScopeChatMember(chat_id=gid, user_id=BOT_OWNER))
+        except Exception as e:
+            log.warning("admin menu for chat %s failed: %s", gid, e)
+    log.info("menus set: public=%d (everyone) admin=%d (owner)",
+             len(PUBLIC_COMMANDS), len(ADMIN_COMMANDS))
 
 
 def main() -> None:
