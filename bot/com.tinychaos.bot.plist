@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd service for the tinychaos Telegram bot.
+  Copy to ~/Library/LaunchAgents/ and `launchctl load` it.
+
+  NOTE: the PATH below MUST include the directory holding the `claude` CLI
+  (~/.local/bin here) so the bot's subprocess can find it. Tokens come from
+  bot/.env (loaded into the environment at startup), not from this plist.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+    <dict>
+        <key>Label</key>
+        <string>com.tinychaos.bot</string>
+
+        <key>ProgramArguments</key>
+        <array>
+            <string>/Users/fulvio/development/tinychaos/bot/.venv/bin/python</string>
+            <string>/Users/fulvio/development/tinychaos/bot/tinychaos_bot.py</string>
+        </array>
+
+        <key>WorkingDirectory</key>
+        <string>/Users/fulvio/development/tinychaos/bot</string>
+
+        <key>RunAtLoad</key>
+        <true />
+
+        <key>KeepAlive</key>
+        <true />
+
+        <key>StandardOutPath</key>
+        <string>/Users/fulvio/development/tinychaos/bot/logs/bot.log</string>
+
+        <key>StandardErrorPath</key>
+        <string>/Users/fulvio/development/tinychaos/bot/logs/bot.error.log</string>
+
+        <key>EnvironmentVariables</key>
+        <dict>
+            <key>PATH</key>
+            <string>/Users/fulvio/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        </dict>
+    </dict>
+</plist>

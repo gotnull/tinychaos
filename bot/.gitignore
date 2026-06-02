@@ -1,0 +1,11 @@
+# secrets + local runtime - never commit these
+.env
+.venv/
+logs/
+*.log
+__pycache__/
+*.pyc
+bot_memory.db
+*.db
+*.db-wal
+*.db-shm
