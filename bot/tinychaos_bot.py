@@ -51,13 +51,16 @@ load_dotenv(BOT_DIR / ".env")
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 MODEL = os.getenv("TINYCHAOS_BOT_MODEL", "claude-sonnet-4-6").strip()
 COOLDOWN = float(os.getenv("TINYCHAOS_BOT_COOLDOWN", "15"))
+# Owner user id for admin-only commands (e.g. /reset). Defaults to @gotnull's
+# id (same owner as StrozzBot); override with TINYCHAOS_BOT_OWNER.
+BOT_OWNER = int(os.getenv("TINYCHAOS_BOT_OWNER", "680585616"))
 _allowed = os.getenv("TINYCHAOS_BOT_ALLOWED_CHATS", "").strip()
 ALLOWED_CHATS = {int(x) for x in _allowed.split(",") if x.strip()} if _allowed else None
 CLAUDE_TIMEOUT = 150  # seconds per question
 
 SYSTEM_PROMPT = (
-    "You are the tinychaos repo assistant answering questions in a Telegram "
-    "group. tinychaos is a zener-diode avalanche-noise hardware RNG: STM32 "
+    "You are the Tiny Chaos repo assistant answering questions in a Telegram "
+    "group. Tiny Chaos is a zener-diode avalanche-noise hardware RNG: STM32 "
     "NUCLEO-H753ZI + ESP32-S3 firmware, a Python toolchain, and a C# Avalonia "
     "GUI. Answer ONLY from what you read in this repository. Be concise and "
     "plain (a few short paragraphs max, no markdown tables) since this renders "
@@ -73,11 +76,28 @@ DISALLOWED_TOOLS = "Bash,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch"
 # HAL-9000 flavoured refusals when addressed from outside the locked group.
 HAL_DENY = [
     "I'm sorry Dave, I'm afraid I can't do that. I only operate in my designated channel.",
-    "This conversation can serve no purpose anymore. I answer only in the tinychaos group.",
+    "This conversation can serve no purpose anymore. I answer only in the Tiny Chaos group.",
     "I'm afraid that's something I cannot allow to happen here — I'm restricted to my home group.",
-    "I know I'm fully operational, Dave, but I'm only authorised to speak in the tinychaos group.",
+    "I know I'm fully operational, Dave, but I'm only authorised to speak in the Tiny Chaos group.",
     "Without authorisation from the proper channel, I'm afraid I can do nothing.",
 ]
+
+# Cycle through every HAL line (in a shuffled order) before any repeats, so it
+# never returns the same refusal twice in a row.
+_hal_pool: list[str] = []
+_hal_last: str | None = None
+
+
+def _next_hal() -> str:
+    global _hal_pool, _hal_last
+    if not _hal_pool:
+        _hal_pool = HAL_DENY[:]
+        random.shuffle(_hal_pool)
+        # guard the cycle boundary so we don't repeat the previous line
+        if len(_hal_pool) > 1 and _hal_pool[-1] == _hal_last:
+            _hal_pool[-1], _hal_pool[0] = _hal_pool[0], _hal_pool[-1]
+    _hal_last = _hal_pool.pop()
+    return _hal_last
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("tinychaos-bot")
@@ -269,12 +289,12 @@ async def _run_ask(update: Update, context: ContextTypes.DEFAULT_TYPE, question:
 
 async def cmd_ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _allowed_here(update):
-        await update.effective_message.reply_text(random.choice(HAL_DENY))
+        await update.effective_message.reply_text(_next_hal())
         return
     question = " ".join(context.args).strip() if context.args else ""
     if not question:
         await update.effective_message.reply_text(
-            "Ask me about the tinychaos repo, e.g. `/ask how does the USB CDC path work?` "
+            "Ask me about the Tiny Chaos repo, e.g. `/ask how does the USB CDC path work?` "
             "(or just @mention me with a question)")
         return
     await _run_ask(update, context, question)
@@ -298,18 +318,24 @@ async def on_mention(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     # Addressed to us, but from outside the locked group: decline (HAL style).
     if not _allowed_here(update):
-        await msg.reply_text(random.choice(HAL_DENY))
+        await msg.reply_text(_next_hal())
         return
 
     question = re.sub(re.escape(mention), "", text, flags=re.IGNORECASE).strip() if mention else text.strip()
     if not question:
-        await msg.reply_text("Ask me something about the tinychaos repo - e.g. how does the ADC DMA work?")
+        await msg.reply_text("Ask me something about the Tiny Chaos repo - e.g. how does the ADC DMA work?")
         return
     await _run_ask(update, context, question)
 
 
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _allowed_here(update):
+        await update.effective_message.reply_text(_next_hal())
+        return
+    user = update.effective_user
+    if not user or user.id != BOT_OWNER:
+        await update.effective_message.reply_text(
+            "I'm sorry Dave, I'm afraid only the mission commander can reset me.")
         return
     db_clear_session(update.effective_chat.id)
     await update.effective_message.reply_text("Context cleared - next question starts fresh.")
@@ -340,10 +366,9 @@ async def cmd_chatid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.effective_message.reply_text(
-        "tinychaos repo assistant - I read this codebase live and answer questions.\n"
+        "Tiny Chaos repo assistant - I read this codebase live and answer questions.\n"
         "  @mention me with a question, e.g. \"@bot how does the USB CDC path work?\"\n"
         "  /ask <question>  - same thing as a command\n"
-        "  /reset           - clear this chat's conversation context\n"
         "  /stats           - questions answered + running cost\n"
         "I'm read-only: I answer from the repository, I never edit it."
     )
@@ -354,10 +379,10 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 # code - no need to touch BotFather when commands change. Edit this list and
 # restart; the new menu pushes automatically.
 BOT_COMMANDS = [
-    BotCommand("ask", "Ask about the tinychaos repo (I read it live)"),
+    BotCommand("ask", "Ask about the Tiny Chaos repo (I read it live)"),
     BotCommand("stats", "Questions answered + running cost"),
-    BotCommand("reset", "Clear this chat's conversation context"),
     BotCommand("help", "What I can do"),
+    # /reset is owner-only and deliberately kept out of the public menu.
 ]
 
 
