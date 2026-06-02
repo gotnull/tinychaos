@@ -29,6 +29,7 @@ import datetime
 import json
 import logging
 import os
+import random
 import re
 import sqlite3
 import time
@@ -36,7 +37,8 @@ from pathlib import Path
 
 import telegramify_markdown
 from dotenv import load_dotenv
-from telegram import Update, BotCommand
+from telegram import (Update, BotCommand, BotCommandScopeDefault,
+                      BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats)
 from telegram.constants import ChatAction, ParseMode
 from telegram.ext import (Application, CommandHandler, ContextTypes,
                           MessageHandler, filters)
@@ -208,6 +210,21 @@ def _allowed_here(update: Update) -> bool:
     return ALLOWED_CHATS is None or (update.effective_chat and update.effective_chat.id in ALLOWED_CHATS)
 
 
+async def _typing_loop(bot, chat_id: int) -> None:
+    """Keep the 'typing…' indicator alive for the whole run. A single
+    sendChatAction only shows for ~5s, but the repo-aware search takes longer,
+    so re-send it every few seconds until cancelled."""
+    try:
+        while True:
+            try:
+                await bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+            except Exception:
+                pass
+            await asyncio.sleep(4)
+    except asyncio.CancelledError:
+        pass
+
+
 async def _run_ask(update: Update, context: ContextTypes.DEFAULT_TYPE, question: str) -> None:
     """Shared question path used by both /ask and @mentions/replies: cooldown,
     one-run-at-a-time, persisted per-chat context, log to memory, reply."""
@@ -228,9 +245,13 @@ async def _run_ask(update: Update, context: ContextTypes.DEFAULT_TYPE, question:
         return
     _last_ask[user_id] = now
 
-    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-    async with _claude_lock:  # one Claude run at a time
-        answer, session, cost = await _ask_claude(question, db_get_session(chat_id))
+    # Keep "typing…" visible for the whole run (not just the first ~5s).
+    typing = asyncio.create_task(_typing_loop(context.bot, chat_id))
+    try:
+        async with _claude_lock:  # one Claude run at a time
+            answer, session, cost = await _ask_claude(question, db_get_session(chat_id))
+    finally:
+        typing.cancel()
     if session:
         db_set_session(chat_id, session)            # persist context across restarts
     db_log(chat_id, title, user_id, username, question, answer, cost)
@@ -328,8 +349,12 @@ BOT_COMMANDS = [
 
 
 async def _post_init(app: Application) -> None:
-    await app.bot.set_my_commands(BOT_COMMANDS)
-    log.info("registered %d slash commands with Telegram", len(BOT_COMMANDS))
+    # Set the menu for every scope so it shows in groups AND DMs (the group
+    # "/" list uses the group scope; some clients ignore the default there).
+    for scope in (BotCommandScopeDefault(), BotCommandScopeAllGroupChats(),
+                  BotCommandScopeAllPrivateChats()):
+        await app.bot.set_my_commands(BOT_COMMANDS, scope=scope)
+    log.info("registered %d slash commands (default+group+private scopes)", len(BOT_COMMANDS))
 
 
 def main() -> None:
