@@ -33,16 +33,18 @@ import random
 import re
 import sqlite3
 import time
+import uuid
 from pathlib import Path
 
 import telegramify_markdown
 from dotenv import load_dotenv
 from telegram import (Update, BotCommand, BotCommandScopeDefault,
                       BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats,
-                      BotCommandScopeChat, BotCommandScopeChatMember)
+                      BotCommandScopeChat, BotCommandScopeChatMember,
+                      InlineKeyboardButton, InlineKeyboardMarkup)
 from telegram.constants import ChatAction, ParseMode
-from telegram.ext import (Application, CommandHandler, ContextTypes,
-                          MessageHandler, filters)
+from telegram.ext import (Application, CallbackQueryHandler, CommandHandler,
+                          ContextTypes, MessageHandler, filters)
 
 # ---- Config --------------------------------------------------------------
 BOT_DIR = Path(__file__).resolve().parent
@@ -59,20 +61,43 @@ _allowed = os.getenv("TINYCHAOS_BOT_ALLOWED_CHATS", "").strip()
 ALLOWED_CHATS = {int(x) for x in _allowed.split(",") if x.strip()} if _allowed else None
 CLAUDE_TIMEOUT = 150  # seconds per question
 
+# A marker the answering Claude appends when its reply proposes a concrete code
+# change. The bot strips it from the displayed text and, when present, offers an
+# "Apply this change" button (owner-approved before anything is written).
+EDIT_MARKER = "[EDIT-AVAILABLE]"
+
 SYSTEM_PROMPT = (
     "You are the Tiny Chaos repo assistant answering questions in a Telegram "
     "group. Tiny Chaos is a zener-diode avalanche-noise hardware RNG: STM32 "
     "NUCLEO-H753ZI + ESP32-S3 firmware, a Python toolchain, and a C# Avalonia "
     "GUI. Answer ONLY from what you read in this repository. Be concise and "
     "plain (a few short paragraphs max, no markdown tables) since this renders "
-    "in a chat. You are read-only: never propose or make edits, never run shell "
-    "commands. If something isn't in the repo, say so."
+    "in a chat. In this answering step you are READ-ONLY: do not edit files or "
+    "run shell commands - just read and explain. If something isn't in the repo, "
+    "say so. If, and ONLY if, your answer describes a specific, concrete code "
+    "change that could be applied to the repo, finish your message with a final "
+    "line containing exactly " + EDIT_MARKER + " (and nothing else on that line). "
+    "Do not add the marker for purely explanatory answers."
 )
 
-# Claude is allowed to READ the repo and nothing else. Anything able to write,
-# edit, commit, or run arbitrary commands is explicitly denied.
+# The answering step is allowed to READ the repo and nothing else. Anything able
+# to write, edit, commit, or run arbitrary commands is explicitly denied here.
 ALLOWED_TOOLS = "Read,Grep,Glob"
 DISALLOWED_TOOLS = "Bash,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch"
+
+# The APPLY step (owner-approved only) additionally gets the file-editing tools.
+# Bash stays denied, so it can edit the working tree in place but cannot run git,
+# commit, or push - changes are left for the owner to review and commit by hand.
+EDIT_ALLOWED_TOOLS = "Read,Grep,Glob,Edit,Write,MultiEdit"
+EDIT_DISALLOWED_TOOLS = "Bash,NotebookEdit,WebFetch,WebSearch"
+EDIT_SYSTEM_PROMPT = (
+    "You are applying a previously-approved code change to the Tiny Chaos repo. "
+    "Implement the change discussed earlier in this conversation by editing the "
+    "files in place. Make ONLY that change - do not refactor unrelated code, do "
+    "not reformat whole files. Do NOT run any git commands, do NOT commit or "
+    "push (you have no shell). When finished, reply with a short summary: the "
+    "files you changed and a one-line description of each edit."
+)
 
 # HAL-9000 flavoured refusals when addressed from outside the locked group.
 HAL_DENY = [
@@ -131,6 +156,12 @@ def init_db() -> None:
                   "id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER, chat_title TEXT,"
                   " user_id INTEGER, username TEXT, question TEXT, answer TEXT,"
                   " cost_usd REAL, created_at TEXT)")
+        # Owner-approved code-edit requests. Persisted so a pending approval
+        # survives a bot/service restart (the callback only carries the token).
+        c.execute("CREATE TABLE IF NOT EXISTS pending_edits("
+                  "token TEXT PRIMARY KEY, orig_chat_id INTEGER, orig_msg_id INTEGER,"
+                  " chat_title TEXT, requester_id INTEGER, requester_name TEXT,"
+                  " question TEXT, session_id TEXT, status TEXT, created_at TEXT)")
 
 
 def _now() -> str:
@@ -160,6 +191,44 @@ def db_log(chat_id, title, user_id, username, question, answer, cost) -> None:
         c.execute("INSERT INTO interactions(chat_id, chat_title, user_id, username, question, "
                   "answer, cost_usd, created_at) VALUES(?,?,?,?,?,?,?,?)",
                   (chat_id, title, user_id, username, question, (answer or "")[:4000], cost, _now()))
+
+
+def db_add_pending(token, orig_chat_id, orig_msg_id, chat_title,
+                   requester_id, requester_name, question, session_id) -> None:
+    with _db() as c:
+        c.execute("INSERT OR REPLACE INTO pending_edits(token, orig_chat_id, orig_msg_id,"
+                  " chat_title, requester_id, requester_name, question, session_id, status,"
+                  " created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                  (token, orig_chat_id, orig_msg_id, chat_title, requester_id,
+                   requester_name, question, session_id, "offered", _now()))
+
+
+def db_get_pending(token):
+    with _db() as c:
+        row = c.execute(
+            "SELECT token, orig_chat_id, orig_msg_id, chat_title, requester_id,"
+            " requester_name, question, session_id, status FROM pending_edits "
+            "WHERE token=?", (token,)).fetchone()
+    if not row:
+        return None
+    keys = ("token", "orig_chat_id", "orig_msg_id", "chat_title", "requester_id",
+            "requester_name", "question", "session_id", "status")
+    return dict(zip(keys, row))
+
+
+def db_set_pending(token, *, status=None, requester_id=None, requester_name=None) -> None:
+    sets, vals = [], []
+    if status is not None:
+        sets.append("status=?"); vals.append(status)
+    if requester_id is not None:
+        sets.append("requester_id=?"); vals.append(requester_id)
+    if requester_name is not None:
+        sets.append("requester_name=?"); vals.append(requester_name)
+    if not sets:
+        return
+    vals.append(token)
+    with _db() as c:
+        c.execute(f"UPDATE pending_edits SET {', '.join(sets)} WHERE token=?", vals)
 
 
 def db_stats():
@@ -221,12 +290,14 @@ def _split(text: str, n: int = 3900):
         yield text[i:i + n]
 
 
-async def _reply(msg, text: str) -> None:
+async def _reply(msg, text: str, reply_markup=None):
     """Send an answer to Telegram. Renders markdown - code blocks (```), inline
     `code`, **bold**, etc. - via MarkdownV2 (which syntax-highlights fenced code
     by language) when it fits and is valid. Falls back to plain-text chunks if
     the converted message would exceed Telegram's 4096-char limit or Telegram
-    rejects the formatting, so a reply always gets through."""
+    rejects the formatting, so a reply always gets through. An optional
+    reply_markup (inline keyboard) is attached to the final message sent.
+    Returns the last Message object sent (so callers can edit its buttons)."""
     text = (text or "").strip() or "(no answer)"
     try:
         md = telegramify_markdown.markdownify(text)
@@ -234,23 +305,33 @@ async def _reply(msg, text: str) -> None:
         md = None
     if md is not None and len(md) <= 4096:
         try:
-            await msg.reply_text(md, parse_mode=ParseMode.MARKDOWN_V2)
-            return
+            return await msg.reply_text(md, parse_mode=ParseMode.MARKDOWN_V2,
+                                        reply_markup=reply_markup)
         except Exception as e:
             log.warning("MarkdownV2 send failed (%s); falling back to plain text", e)
-    for chunk in _split(text):
-        await msg.reply_text(chunk)
+    sent = None
+    chunks = list(_split(text))
+    for i, chunk in enumerate(chunks):
+        # Attach the keyboard only to the last chunk.
+        rm = reply_markup if i == len(chunks) - 1 else None
+        sent = await msg.reply_text(chunk, reply_markup=rm)
+    return sent
 
 
-async def _ask_claude(question: str, session_id: str | None) -> tuple[str, str | None, float | None]:
-    """Run `claude -p` read-only in the repo; return (answer, new_session_id, cost_usd)."""
+async def _run_claude(question: str, session_id: str | None, *, allowed: str,
+                      disallowed: str, system_prompt: str, timeout: float = CLAUDE_TIMEOUT,
+                      ) -> tuple[str, str | None, float | None]:
+    """Run `claude -p` in the repo with the given tool allow/deny lists and
+    system prompt; return (text, new_session_id, cost_usd). The allow/deny lists
+    are what separate the READ-ONLY answering step from the owner-approved
+    edit step - everything else about the invocation is identical."""
     cmd = [
         "claude", "-p", question,
         "--output-format", "json",
         "--model", MODEL,
-        "--allowedTools", ALLOWED_TOOLS,
-        "--disallowedTools", DISALLOWED_TOOLS,
-        "--append-system-prompt", SYSTEM_PROMPT,
+        "--allowedTools", allowed,
+        "--disallowedTools", disallowed,
+        "--append-system-prompt", system_prompt,
     ]
     if session_id:
         cmd += ["--resume", session_id]
@@ -260,10 +341,10 @@ async def _ask_claude(question: str, session_id: str | None) -> tuple[str, str |
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
     )
     try:
-        out, err = await asyncio.wait_for(proc.communicate(), timeout=CLAUDE_TIMEOUT)
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
         proc.kill()
-        return ("Timed out reading the repo - try a narrower question.", session_id, None)
+        return ("Timed out - try a narrower request.", session_id, None)
 
     if proc.returncode != 0:
         log.error("claude exited %s: %s", proc.returncode, err.decode(errors="replace")[:500])
@@ -277,6 +358,88 @@ async def _ask_claude(question: str, session_id: str | None) -> tuple[str, str |
     except json.JSONDecodeError:
         # Fall back to raw text if the output wasn't JSON for some reason.
         return (out.decode(errors="replace").strip() or "(empty answer)", session_id, None)
+
+
+async def _ask_claude(question: str, session_id: str | None) -> tuple[str, str | None, float | None]:
+    """READ-ONLY answering step: read the repo and answer, never write."""
+    return await _run_claude(question, session_id, allowed=ALLOWED_TOOLS,
+                             disallowed=DISALLOWED_TOOLS, system_prompt=SYSTEM_PROMPT)
+
+
+def _strip_edit_marker(answer: str) -> tuple[str, bool]:
+    """Remove the EDIT_MARKER (and its line) from an answer. Returns
+    (clean_text, edit_available)."""
+    if EDIT_MARKER not in answer:
+        return answer.strip(), False
+    clean = re.sub(r"\n*[ \t]*" + re.escape(EDIT_MARKER) + r"[ \t]*", "", answer)
+    return clean.strip(), True
+
+
+async def _git_diff_stat() -> str:
+    """Return `git diff --stat` for the repo working tree (bot-side, read-only).
+    Used to report exactly what an applied edit touched, independent of what
+    Claude claims it changed."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git", "-C", str(REPO_DIR), "--no-pager", "diff", "--stat",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=15)
+        return out.decode(errors="replace").strip()
+    except Exception as e:
+        return f"(could not read git diff: {e})"
+
+
+async def _run_tests() -> tuple[bool, str]:
+    """Run the project's Python test suite (tools/) and return (passed, summary).
+    Used after an edit is applied so a change that breaks existing code is caught
+    and reported to the owner. A missing pytest/venv is reported, not fatal."""
+    tools_dir = REPO_DIR / "tools"
+    py = tools_dir / ".venv" / "bin" / "python"
+    py = str(py) if py.exists() else "python3"
+    if not (tools_dir / "tests").exists() and not (tools_dir / "pyproject.toml").exists():
+        return (True, "no test suite found (tools/tests) - skipped")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            py, "-m", "pytest", "-q", cwd=str(tools_dir),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=300)
+        text = out.decode(errors="replace").strip()
+        # Last non-empty line of pytest -q is the summary, e.g. "12 passed in 0.3s".
+        tail = next((ln for ln in reversed(text.splitlines()) if ln.strip()), text)[-300:]
+        return (proc.returncode == 0, tail or "(no pytest output)")
+    except FileNotFoundError:
+        return (True, "pytest not installed - tests skipped")
+    except asyncio.TimeoutError:
+        return (False, "tests timed out after 300s")
+    except Exception as e:
+        return (False, f"could not run tests: {e}")
+
+
+async def _apply_edit(pending: dict) -> tuple[bool, str]:
+    """Owner-approved write step: resume the conversation that proposed the change
+    (so Claude has full context) with the file-editing tools enabled, edit the
+    working tree in place, then run the test suite. Returns (ok, report)."""
+    instruction = (
+        "The change you proposed earlier has been approved. Apply it now to the "
+        "files in place, then summarise what you changed. Original request was: "
+        + pending["question"])
+    text, _session, cost = await _run_claude(
+        instruction, pending.get("session_id"),
+        allowed=EDIT_ALLOWED_TOOLS, disallowed=EDIT_DISALLOWED_TOOLS,
+        system_prompt=EDIT_SYSTEM_PROMPT, timeout=CLAUDE_TIMEOUT)
+
+    diff = await _git_diff_stat()
+    if not diff:
+        # Nothing actually changed on disk - treat as a no-op, don't run tests.
+        return (False, f"{text}\n\nNo files changed (nothing was written).")
+
+    passed, test_summary = await _run_tests()
+    status = "✅ tests pass" if passed else "⚠️ TESTS FAILING"
+    report = (f"{text.strip()}\n\n*Changed files*\n```\n{diff}\n```\n"
+              f"{status}: `{test_summary}`")
+    if cost:
+        report += f"\n_apply cost ${cost:.3f}_"
+    return (passed, report)
 
 
 def _allowed_here(update: Update) -> bool:
@@ -333,8 +496,23 @@ async def _run_ask(update: Update, context: ContextTypes.DEFAULT_TYPE, question:
         typing.cancel()
     if session:
         db_set_session(chat_id, session)            # persist context across restarts
+
+    # If the answer proposes a concrete change, strip the marker and offer an
+    # owner-approved "Apply" button. The button carries a short token; the
+    # request context is persisted so it survives a restart.
+    answer, edit_available = _strip_edit_marker(answer)
     db_log(chat_id, title, user_id, username, question, answer, cost)
-    await _reply(msg, answer)
+
+    markup = None
+    token = None
+    if edit_available:
+        token = uuid.uuid4().hex[:16]
+        markup = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("✏️ Apply this change", callback_data=f"apply:{token}")]])
+    sent = await _reply(msg, answer, reply_markup=markup)
+    if edit_available and token:
+        db_add_pending(token, chat_id, sent.message_id if sent else 0, title,
+                       user_id, username, question, session)
 
 
 async def cmd_ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -377,6 +555,159 @@ async def on_mention(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await msg.reply_text("Ask me something about the Tiny Chaos repo - e.g. how does the ADC DMA work?")
         return
     await _run_ask(update, context, question)
+
+
+# ---- Owner-approved edits ------------------------------------------------
+
+async def _send_md(bot, chat_id: int, text: str) -> None:
+    """Send markdown text to a chat id (not as a reply), with the same
+    MarkdownV2-or-plain fallback as _reply."""
+    text = (text or "").strip() or "(empty)"
+    try:
+        md = telegramify_markdown.markdownify(text)
+    except Exception:
+        md = None
+    if md is not None and len(md) <= 4096:
+        try:
+            await bot.send_message(chat_id=chat_id, text=md, parse_mode=ParseMode.MARKDOWN_V2)
+            return
+        except Exception as e:
+            log.warning("md send to %s failed (%s); plain text", chat_id, e)
+    for chunk in _split(text):
+        await bot.send_message(chat_id=chat_id, text=chunk)
+
+
+async def _set_orig_button(context, pending: dict, label: str) -> None:
+    """Replace the original answer's inline keyboard with a non-actionable
+    status button (e.g. '✅ Applied'), so the request can't be re-triggered."""
+    try:
+        await context.bot.edit_message_reply_markup(
+            chat_id=pending["orig_chat_id"], message_id=pending["orig_msg_id"],
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(label, callback_data="noop")]]))
+    except Exception as e:
+        log.warning("could not update original button: %s", e)
+
+
+async def _on_apply_request(update, context, query, pending: dict, token: str) -> None:
+    """Someone tapped 'Apply this change'. Route an Approve/Reject prompt to the
+    owner's DM. Nothing is written yet - even the owner's own tap goes through
+    this confirmation step."""
+    status = pending["status"]
+    if status == "applied":
+        await query.answer("This change was already applied.", show_alert=True)
+        return
+    if status in ("requested", "approving"):
+        await query.answer("Already waiting on the admin.", show_alert=True)
+        return
+
+    tapper = query.from_user
+    name = (tapper.username and f"@{tapper.username}") or tapper.full_name or str(tapper.id)
+    db_set_pending(token, status="requested", requester_id=tapper.id, requester_name=name)
+    await _set_orig_button(context, pending, "⏳ Awaiting admin approval")
+
+    where = pending.get("chat_title") or "a direct message"
+    prompt = (f"🛠 Edit request\n\nFrom: {name}\nChat: {where}\n\n"
+              f"Request:\n{pending['question']}\n\n"
+              f"Apply this to the working tree? (you'll get the diff + test results)")
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Approve", callback_data=f"ok:{token}"),
+        InlineKeyboardButton("❌ Reject", callback_data=f"no:{token}"),
+    ]])
+    try:
+        await context.bot.send_message(chat_id=BOT_OWNER, text=prompt, reply_markup=kb)
+        await query.answer("Sent to the admin for approval.")
+    except Exception as e:
+        log.error("could not DM owner for approval: %s", e)
+        db_set_pending(token, status="offered")
+        await _set_orig_button(context, pending, "✏️ Apply this change")
+        await query.answer("Couldn't reach the admin - they must start a DM with me first.",
+                           show_alert=True)
+
+
+async def _on_approve(update, context, query, pending: dict, token: str) -> None:
+    """Owner approved an edit. Run the write step, then post the diff + test
+    results back to the chat where it was requested."""
+    if not query.from_user or query.from_user.id != BOT_OWNER:
+        await query.answer("Only the admin can approve edits.", show_alert=True)
+        return
+    if pending["status"] in ("applied", "approving"):
+        await query.answer("Already handled.", show_alert=True)
+        return
+    db_set_pending(token, status="approving")
+    await query.answer("Approved - applying…")
+    try:
+        await query.edit_message_text("⏳ Applying the change…")
+    except Exception:
+        pass
+
+    orig_chat = pending["orig_chat_id"]
+    typing = asyncio.create_task(_typing_loop(context.bot, orig_chat))
+    try:
+        async with _claude_lock:
+            ok, report = await _apply_edit(pending)
+    except Exception as e:
+        ok, report = False, f"Edit failed to run: {e}"
+        log.exception("apply_edit crashed")
+    finally:
+        typing.cancel()
+
+    db_set_pending(token, status="applied" if ok else "failed")
+    btn = "✅ Applied" if ok else "⚠️ Applied (tests failing)"
+    await _set_orig_button(context, pending, btn)
+    try:
+        await query.edit_message_text("✅ Applied." if ok else "⚠️ Applied, but tests are failing.")
+    except Exception:
+        pass
+
+    who = pending.get("requester_name") or "someone"
+    header = (f"✅ Change approved and applied (requested by {who}):"
+              if ok else f"⚠️ Change applied but TESTS FAILED (requested by {who}) - review needed:")
+    await _send_md(context.bot, orig_chat, f"{header}\n\n{report}")
+
+
+async def _on_reject(update, context, query, pending: dict, token: str) -> None:
+    """Owner rejected an edit. Discard it and tell the requesting chat."""
+    if not query.from_user or query.from_user.id != BOT_OWNER:
+        await query.answer("Only the admin can decide on edits.", show_alert=True)
+        return
+    if pending["status"] in ("applied", "rejected"):
+        await query.answer("Already handled.", show_alert=True)
+        return
+    db_set_pending(token, status="rejected")
+    await query.answer("Rejected.")
+    try:
+        await query.edit_message_text("❌ Rejected - nothing was changed.")
+    except Exception:
+        pass
+    await _set_orig_button(context, pending, "❌ Declined by admin")
+    who = pending.get("requester_name") or "the requester"
+    await context.bot.send_message(
+        pending["orig_chat_id"],
+        f"The admin declined the change requested by {who}. Nothing was modified.")
+
+
+async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Route inline-button taps: apply (request approval), ok (owner approves),
+    no (owner rejects), noop (disabled status button)."""
+    query = update.callback_query
+    if not query or not query.data:
+        return
+    if query.data == "noop":
+        await query.answer()
+        return
+    action, _, token = query.data.partition(":")
+    pending = db_get_pending(token) if token else None
+    if not pending:
+        await query.answer("This request has expired.", show_alert=True)
+        return
+    if action == "apply":
+        await _on_apply_request(update, context, query, pending, token)
+    elif action == "ok":
+        await _on_approve(update, context, query, pending, token)
+    elif action == "no":
+        await _on_reject(update, context, query, pending, token)
+    else:
+        await query.answer()
 
 
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -454,8 +785,12 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Tiny Chaos repo assistant - I read this codebase live and answer questions.\n"
         "  @mention me with a question, e.g. \"@bot how does the USB CDC path work?\"\n"
         "  /ask <question>  - same thing as a command\n"
-        "  /stats           - questions answered + running cost\n"
-        "I'm read-only: I answer from the repository, I never edit it."
+        "  /stats           - questions answered + running cost\n\n"
+        "I answer read-only. If an answer proposes a concrete code change, an "
+        "\"Apply this change\" button appears - tapping it asks the admin to "
+        "approve before anything is written. On approval I edit the working tree "
+        "and run the test suite, then post the diff + test results. I never "
+        "commit or push - the admin reviews and commits."
     )
 
 
@@ -510,6 +845,8 @@ def main() -> None:
     app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(CommandHandler("chatid", cmd_chatid))
     app.add_handler(CommandHandler(["help", "start"], cmd_help))
+    # Inline-button taps for the owner-approved edit flow.
+    app.add_handler(CallbackQueryHandler(on_callback))
     # Natural @mentions / replies to the bot (with group privacy on, these are
     # the only non-command messages the bot receives anyway). Commands are
     # excluded so /ask isn't double-handled.
