@@ -57,10 +57,27 @@ public sealed class WaveformView : Control
 
     private readonly DispatcherTimer _redrawTimer;
 
+    public static readonly StyledProperty<double> YMinProperty =
+        AvaloniaProperty.Register<WaveformView, double>(nameof(YMin), -1.0);
+
+    public double YMin
+    {
+        get => GetValue(YMinProperty);
+        set => SetValue(YMinProperty, value);
+    }
+
+    public static readonly StyledProperty<double> YMaxProperty =
+        AvaloniaProperty.Register<WaveformView, double>(nameof(YMax), -1.0);
+
+    public double YMax
+    {
+        get => GetValue(YMaxProperty);
+        set => SetValue(YMaxProperty, value);
+    }
+
     static WaveformView()
     {
-        // Rescale immediately when the resolution toggle changes FullScale.
-        AffectsRender<WaveformView>(FullScaleProperty);
+        AffectsRender<WaveformView>(FullScaleProperty, YMinProperty, YMaxProperty);
     }
 
     public WaveformView()
@@ -90,11 +107,16 @@ public sealed class WaveformView : Control
             bounds.Height - BottomAxisHeight - Padding);
 
         int fullScale = Math.Max(2, FullScale);
-        DrawAxes(context, plotRect, fullScale);
+        double yMin = YMin, yMax = YMax;
+        double displayMin = (yMin >= 0 && yMax > yMin) ? yMin : 0;
+        double displayMax = (yMin >= 0 && yMax > yMin) ? yMax : fullScale;
+
+        DrawAxes(context, plotRect, displayMin, displayMax);
 
         var model = Model;
         if (model is null) return;
 
+        double yRange = Math.Max(1, displayMax - displayMin);
         for (int ch = 0; ch < model.ChannelCount; ch++)
         {
             var samples = model.Snapshot(ch);
@@ -102,15 +124,15 @@ public sealed class WaveformView : Control
 
             var pen = new Pen(ChannelBrushes[ch % ChannelBrushes.Length], 1.2);
             double xScale = plotRect.Width / Math.Max(1, samples.Length - 1);
-            double yScale = plotRect.Height / fullScale;
+            double yScale = plotRect.Height / yRange;
 
             var geometry = new StreamGeometry();
             using (var gctx = geometry.Open())
             {
-                gctx.BeginFigure(new Point(plotRect.Left, plotRect.Bottom - samples[0] * yScale), false);
+                gctx.BeginFigure(new Point(plotRect.Left, plotRect.Bottom - (samples[0] - displayMin) * yScale), false);
                 for (int i = 1; i < samples.Length; i++)
                 {
-                    gctx.LineTo(new Point(plotRect.Left + i * xScale, plotRect.Bottom - samples[i] * yScale));
+                    gctx.LineTo(new Point(plotRect.Left + i * xScale, plotRect.Bottom - (samples[i] - displayMin) * yScale));
                 }
                 gctx.EndFigure(false);
             }
@@ -129,23 +151,28 @@ public sealed class WaveformView : Control
                       bounds.Height - BottomAxisHeight + 2));
     }
 
-    private static void DrawAxes(DrawingContext context, Rect plotRect, int fullScale)
+    private static void DrawAxes(DrawingContext context, Rect plotRect, double displayMin, double displayMax)
     {
-        // Mid-rail dashed line
+        // Mid-rail dashed line at visual centre
         double mid = plotRect.Top + plotRect.Height / 2;
         context.DrawLine(MidRailPen, new Point(plotRect.Left, mid), new Point(plotRect.Right, mid));
 
-        // Y-axis ticks at 0 / quarter / half / three-quarter / max, derived from
-        // the full-scale range (12-bit -> 0,1024,2048,3072,4095; 16-bit ->
-        // 0,16384,32768,49152,65535).
-        int[] codes = { 0, fullScale / 4, fullScale / 2, 3 * fullScale / 4, fullScale - 1 };
-        foreach (var code in codes)
+        double range = Math.Max(1, displayMax - displayMin);
+        double[] vals =
         {
-            double y = plotRect.Bottom - (code / (double)fullScale) * plotRect.Height;
+            displayMin,
+            displayMin + range * 0.25,
+            displayMin + range * 0.50,
+            displayMin + range * 0.75,
+            displayMax,
+        };
+        foreach (var val in vals)
+        {
+            double y = plotRect.Bottom - ((val - displayMin) / range) * plotRect.Height;
             context.DrawLine(GridPen, new Point(plotRect.Left, y), new Point(plotRect.Right, y));
 
             var label = new FormattedText(
-                code.ToString(CultureInfo.InvariantCulture),
+                ((int)Math.Round(val)).ToString(CultureInfo.InvariantCulture),
                 CultureInfo.InvariantCulture,
                 FlowDirection.LeftToRight,
                 AxisTypeface, 10,

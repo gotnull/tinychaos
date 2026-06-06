@@ -114,6 +114,12 @@
                                             </DataTemplate>
                                         </ComboBox.ItemTemplate>
                                     </ComboBox>
+                                    <Button Classes="secondary" Content="Lock range"
+                                        Command="{Binding LockRangeCommand}"
+                                        VerticalAlignment="Center" />
+                                    <Button Classes="secondary" Content="Reset range"
+                                        Command="{Binding ResetRangeCommand}"
+                                        VerticalAlignment="Center" />
                                     <!-- Captures the whole app to a shareable MP4 clip (H.264,
                                          Telegram-friendly) via ffmpeg. Click handled in code-behind:
                                          rendering a control to a bitmap is a View concern (needs the
@@ -126,7 +132,9 @@
                             <Border Grid.Row="2" Classes="chartHolder">
                                 <local:WaveformView x:Name="WaveformControl"
                                     Model="{Binding Waveform}"
-                                    FullScale="{Binding WaveformFullScale}" />
+                                    FullScale="{Binding WaveformFullScale}"
+                                    YMin="{Binding WaveformYMin}"
+                                    YMax="{Binding WaveformYMax}" />
                             </Border>
                         </Grid>
                     </Border>

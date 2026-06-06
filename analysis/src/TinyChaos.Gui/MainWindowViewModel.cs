@@ -190,6 +190,29 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(AdcRangeCaption));
     }
 
+    /// <summary>Y-axis lower bound for the waveform zoom view. -1 = full-scale auto.</summary>
+    [ObservableProperty] private double _waveformYMin = -1.0;
+
+    /// <summary>Y-axis upper bound for the waveform zoom view. -1 = full-scale auto.</summary>
+    [ObservableProperty] private double _waveformYMax = -1.0;
+
+    [RelayCommand]
+    private void LockRange()
+    {
+        var (min, max) = Waveform.GetMinMax(0);
+        if (min >= max) return;
+        double margin = (max - min) * 0.10;
+        WaveformYMin = Math.Max(0, min - margin);
+        WaveformYMax = Math.Min(WaveformFullScale, max + margin);
+    }
+
+    [RelayCommand]
+    private void ResetRange()
+    {
+        WaveformYMin = -1.0;
+        WaveformYMax = -1.0;
+    }
+
     public MainWindowViewModel()
     {
         Waveform = new WaveformModel(channelCount: 2, windowSamples: 2048);

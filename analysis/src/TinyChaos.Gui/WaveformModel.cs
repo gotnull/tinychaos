@@ -63,6 +63,27 @@ public sealed class WaveformModel
         }
     }
 
+    /// <summary>Returns the observed min and max ushort across the current window, or (0, 0) if no samples.</summary>
+    public (ushort Min, ushort Max) GetMinMax(int channelIndex)
+    {
+        lock (_lock)
+        {
+            int count = _counts[channelIndex];
+            if (count == 0) return (0, 0);
+            var buf = _buffers[channelIndex];
+            int head = _heads[channelIndex];
+            int start = count < buf.Length ? 0 : head;
+            ushort min = ushort.MaxValue, max = ushort.MinValue;
+            for (int i = 0; i < count; i++)
+            {
+                ushort v = buf[(start + i) % buf.Length];
+                if (v < min) min = v;
+                if (v > max) max = v;
+            }
+            return (min, max);
+        }
+    }
+
     /// <summary>Drop all samples on every channel.</summary>
     public void Clear()
     {
