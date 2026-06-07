@@ -9,9 +9,9 @@ If you have not written any firmware yet and want to start from scratch, the rig
 | Side | What you have | What you do not have |
 |---|---|---|
 | **Existing firmware** (typical setup) | Working CubeMX project, generated `main.c` and HAL init, USB CDC middleware that actually transmits bytes, ADC + DMA configured in circular mode with half-complete and full-complete callbacks already firing, a `.bin` you can flash today. | A protocol that lets the host recover from dropped bytes or detect corruption. |
-| **This repo's `firmware/` directory** | Portable C protocol module (CRC, packet encode, decode), USB CDC and UART ring-buffer transmitters with drop-and-count back-pressure handling, integration documentation, a host self-test that verifies byte-for-byte parity with the Python and C# reference implementations. | A CubeMX project, generated `main.c`, USB middleware, linker script, ADC capture implementation, a flashable binary. |
+| **This repo's portable protocol module** | Portable C protocol module (CRC, packet encode, decode), USB CDC and UART ring-buffer transmitters with drop-and-count back-pressure handling, integration documentation, a host self-test that verifies byte-for-byte parity with the Python and C# reference implementations. | Nothing you need - it is a drop-in library, not a whole firmware. |
 
-The protocol library is the bit worth sharing. The rest of `firmware/` is scaffolding for the case where someone starts a new CubeMX project from scratch.
+The protocol library is the bit worth sharing into *your* project. (If instead you want a complete, ready-to-flash firmware for the NUCLEO-H753ZI, this repo also ships one - the committed CubeMX/CMake project at [../firmware/nucleo-h753zi/](../firmware/nucleo-h753zi/); see [../firmware/README.md](../firmware/README.md). This integration guide is specifically for keeping firmware you already have.)
 
 ## So integration goes the other direction
 
@@ -171,7 +171,7 @@ If you have an ESP32-S3 board already (rsvpnano-style hardware, any Waveshare or
 
 ## Summary
 
-- Your firmware stays. Our `firmware/` is mostly empty scaffolding plus one real piece: the protocol module.
+- Your firmware stays. From our side you only take one piece: the portable protocol module. (A complete ready-to-flash firmware also exists at [../firmware/nucleo-h753zi/](../firmware/nucleo-h753zi/) if you would rather use ours.)
 - Copy three files (`entropy_config.h`, `entropy_protocol.h`, `entropy_protocol.c`) into your project.
 - Wrap each DMA-callback `CDC_Transmit_FS` call with one `entropy_packet_encode` call.
 - That is the entire integration. Spike encoding plan continues to work on top of the same wire format.

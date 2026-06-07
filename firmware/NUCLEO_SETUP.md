@@ -1,9 +1,23 @@
 # NUCLEO-H753ZI bring-up
 
-This is the exact recipe to get framed packets streaming from the NUCLEO to
-the host tools. The one step that needs a GUI is CubeMX generating the
-HAL/USB/clock project — that's an STM32 reality, not optional. See
-[main_skeleton.c](Core/Src/main_skeleton.c) for the exact code blocks to paste.
+> **Just want to build and flash? You do not need this document and you do not
+> need CubeMX.** The project is already generated and committed at
+> [nucleo-h753zi/](nucleo-h753zi/). Build + flash with:
+> ```
+> cd firmware/nucleo-h753zi
+> ./flash.sh        # macOS / Linux   (.\flash.ps1 on Windows)
+> ```
+> See [README.md](README.md) for prerequisites and the UART/USB transport
+> choice. **This document is only the from-scratch recipe** for regenerating the
+> HAL/USB/clock tree in CubeMX - you almost never need it, because all of our
+> logic lives in [entropy_app.c](nucleo-h753zi/Core/Src/entropy_app.c), which
+> survives regeneration.
+
+This is the exact recipe to regenerate the HAL/USB/clock project from CubeMX if
+you ever need to. The one step that needs a GUI is CubeMX generating that tree —
+that's an STM32 reality, not optional. Note our application code is no longer
+pasted into `main.c`; it lives in `entropy_app.c` and the generated `main.c`
+only calls `entropy_app_init()` / `entropy_app_task()`.
 
 ## Build environment — pick one
 

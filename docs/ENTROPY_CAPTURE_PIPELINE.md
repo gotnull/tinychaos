@@ -19,7 +19,7 @@ The host tooling is Python. There is no GUI in v1 beyond a small live matplotlib
 - STM32 NUCLEO-H753ZI development board, or a pin- and peripheral-compatible STM32H7 board. Other STM32 families are likely to work with port-level changes to ADC and DMA setup.
 - USB cable from the board to a macOS host. The board's on-board ST-LINK exposes a USB CDC virtual COM port, which is the primary transport.
 - Analogue front-end on a breadboard, populated per [docs/hardware-design.md](hardware-design.md): zener + bias + AC coupling + two-stage amplifier + ADC protection.
-- Two analogue channels are sampled simultaneously: the amplified zener signal on ADC1 IN0 (PA0) and a fixed mid-rail reference divider on ADC1 IN3 (PA3).
+- Two analogue channels are sampled: the amplified zener signal on ADC1 INP15 (PA3, the A0 pin) and a fixed mid-rail reference divider on ADC1 INP10 (PC0, the A1 pin). They are paced by a TIM3 trigger and DMA'd as channel 0 / channel 1. See [firmware/nucleo-h753zi/Core/Src/entropy_app.c](../firmware/nucleo-h753zi/Core/Src/entropy_app.c).
 - Bias supply for the zener is 12 V to 18 V, derived from either two 9 V batteries in series or a DC-DC boost module from the +5 V breadboard rail. See [docs/filtering-and-power.md](filtering-and-power.md).
 
 ## 3. Zener avalanche-noise source
@@ -89,10 +89,10 @@ stage 2 amplifier: LM833N dual low-noise op-amp, gain ~10, with lowpass at ~48 k
 ADC protection: 1 kohm series, two BAT46 Schottky clamps, 100 nF anti-alias to GND
         |
         v
-STM32 NUCLEO-H753ZI, ADC1 IN0 (PA0) for zener, ADC1 IN3 (PA3) for baseline divider
+STM32 NUCLEO-H753ZI, ADC1 INP15 (PA3) for zener, ADC1 INP10 (PC0) for baseline divider
 ```
 
-The baseline divider is two 100 kohm resistors from +3.3 V to GND meeting at a tap that goes through its own 1 kohm + 100 nF + Schottky clamp network into ADC1 IN3. It provides a clean reference channel for every capture run, so the host can subtract baseline drift from the zener channel.
+The baseline divider is two 100 kohm resistors from +3.3 V to GND meeting at a tap that goes through its own 1 kohm + 100 nF + Schottky clamp network into ADC1 INP10 (PC0). It provides a clean reference channel for every capture run, so the host can subtract baseline drift from the zener channel.
 
 Component values, bias calculations, and feedback network sizing are in [docs/hardware-design.md](hardware-design.md).
 

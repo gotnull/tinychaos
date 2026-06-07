@@ -24,8 +24,9 @@ Every stage of the pipeline is observable. There is no manual hex editing, no AS
 | Host C# test suite (xUnit)                 | Code written; tests run by anyone with the .NET 8 SDK via `dotnet test`. |
 | Firmware portable protocol module (C)      | Done. Verified byte-identical to Python and C# references. |
 | Firmware on-host self-test                 | Passing. `make -C firmware test`.                  |
-| Firmware transport modules (USB CDC, UART) | Implemented. Awaiting CubeMX project generation.   |
-| Firmware ADC and DMA capture               | Skeleton present in `main_skeleton.c`; full integration after CubeMX. |
+| Firmware STM32 project (build + flash)     | Done and committed. [firmware/nucleo-h753zi/](firmware/nucleo-h753zi/) is a complete CubeMX/CMake project. Build + flash: `cd firmware/nucleo-h753zi && ./flash.sh` (or `.\flash.ps1` on Windows). |
+| Firmware transport modules (USB CDC, UART) | Done. Compile-time `-DENTROPY_TRANSPORT=UART\|USB` in the `nucleo-h753zi` project. |
+| Firmware ADC and DMA capture               | Done. TIM3 -> ADC1 two-channel (PA3 zener INP15 + PC0 baseline INP10) -> DMA -> framed packets, in [firmware/nucleo-h753zi/Core/Src/entropy_app.c](firmware/nucleo-h753zi/Core/Src/entropy_app.c). |
 | Live plotting (matplotlib, Python only)    | Done. `tinychaos.plotting`, optional `plot` extra. CLI degrades cleanly if absent. |
 | Offline analysis (rolling, Z-score, FFT)   | Done in Python (`tinychaos.analysis`). C# v1 is CLI-only; capture once with either host and analyse later. |
 
@@ -100,7 +101,7 @@ pip install -e .[dev,plot]
 pytest
 ```
 
-Expected result: **54 passed** in under a second. The suite covers:
+Expected result: **68 passed** in under a second. The suite covers:
 
 - CRC-16/CCITT-FALSE known-answers and parametrised vectors.
 - Protocol encode and decode round-trips for 0, 1, 8, 256, and 1024 samples.
@@ -235,23 +236,27 @@ Power the zener from 2 x 9 V batteries in series for the cleanest measurement. P
 
 Safety: the STM32 ADC input must never exceed 3.3 V. The clamp network is what guarantees this even if the amplifier saturates. Do NOT skip it.
 
-### 9. Generate the STM32CubeMX project and build the firmware
+### 9. Build and flash the firmware
 
-Detailed steps and the exact CubeMX peripheral configuration are in [firmware/README.md](firmware/README.md). Summary:
+**The STM32 firmware project is already in the repo - you do not need STM32CubeMX and there is nothing to generate.** The complete CubeMX/CMake project, including the application ([firmware/nucleo-h753zi/Core/Src/entropy_app.c](firmware/nucleo-h753zi/Core/Src/entropy_app.c): TIM3 -> ADC1 two-channel -> DMA -> framed packets), is committed under [firmware/nucleo-h753zi/](firmware/nucleo-h753zi/).
 
-1. Install: `brew install --cask stm32cubemx`, `brew install arm-none-eabi-gcc stlink`.
-2. Open CubeMX, create a project for NUCLEO-H753ZI.
-3. Configure the clock tree (480 MHz core), ADC1 channels IN0 + IN3, TIM2 as the ADC trigger at 10 kHz, TIM5 as a free-running 1 MHz counter for `time_us`, USB OTG FS in CDC mode, USART3 at 921600 baud as the fallback transport.
-4. Project Manager: Toolchain = Makefile. Project location = parent of this `firmware/` folder. Generate.
-5. Move the generated Makefile aside: `mv firmware/Makefile firmware/Makefile.cube`. The top-level `firmware/Makefile` picks it up automatically.
-6. Apply the integration edits documented in `firmware/Core/Src/main_skeleton.c`. Specifically, paste the documented snippets into the CubeMX `USER CODE BEGIN/END` markers in `main.c` and into the USB and UART completion callbacks. Do not replace the whole files.
-7. Pick the transport. Uncomment ONE of `#define ENTROPY_TRANSPORT_USB` or `#define ENTROPY_TRANSPORT_UART` in `firmware/Core/Inc/entropy_config.h`.
-8. Build: `cd firmware && make`. The ELF, HEX, and BIN are in `build/`.
-9. Flash: `make flash`, or directly `st-flash write build/tinychaos.bin 0x08000000`.
+1. Install the toolchain (no `make`, no CubeMX):
+   - macOS: `brew install arm-none-eabi-gcc cmake ninja stlink`
+   - Windows: `choco install gcc-arm-embedded cmake ninja stlink` (or the Arm/ST installers)
+   - Linux: `sudo apt install gcc-arm-none-eabi cmake ninja-build stlink-tools`
+2. Build and flash over the on-board ST-LINK:
+   ```
+   cd firmware/nucleo-h753zi
+   ./flash.sh          # macOS / Linux
+   .\flash.ps1         # Windows (PowerShell)
+   ```
+3. Transport is a compile-time choice: UART (USART3 on the ST-LINK VCP) or USB CDC on CN13, selected with `-DENTROPY_TRANSPORT=UART|USB`. See [firmware/README.md](firmware/README.md#transport-uart-vs-usb-cdc).
 
-### 10. Verify the firmware-to-host link with the counter pattern (no ADC yet)
+Full per-OS prerequisites and the (rarely needed) from-scratch regeneration recipe are in [firmware/README.md](firmware/README.md) and [firmware/NUCLEO_SETUP.md](firmware/NUCLEO_SETUP.md).
 
-`main_skeleton.c` ships with `ENTROPY_USE_COUNTER_PATTERN = 1`. The firmware emits packets whose samples are a 12-bit counter rather than real ADC data. This isolates protocol and transport from analogue questions.
+### 10. Verify the firmware-to-host link
+
+With the board flashed and plugged in, the host should decode a clean stream. During bring-up (no analogue front-end wired) both ADC channels sit near the noise floor; the zener channel comes alive once the breadboard chain is connected. Either way the protocol, framer, transport, and clocks are exercised end to end.
 
 #### Finding the serial port name
 
@@ -280,19 +285,15 @@ Expected:
 - Dropped packets: 0.
 - STM32-derived rate: matches `ADC_SAMPLE_RATE_HZ`.
 - Host-derived rate: within a few hundred ppm of the STM32-derived rate.
-- CSV `adc_value` column shows a clean 12-bit counter modulo 4096.
+- CSV `adc_value` column shows two interleaved channels (`channel_index` 0 and 1).
 
-If those four properties hold, the protocol, framer, transport, and clocks are all correct. Move on to ADC.
+If those properties hold, the protocol, framer, transport, and clocks are all correct.
 
-### 11. Switch to real ADC capture
+### 11. Wire the analogue front-end and capture real entropy
 
-In `main_skeleton.c` (or wherever you applied its content in your CubeMX `main.c`), set:
+The firmware already captures two real ADC channels (PA3 zener / INP15, PC0 baseline / INP10) - no firmware change is needed. The remaining work is physical: build the breadboard chain from step 8 and connect the amplified zener output (through the mandatory ADC clamp network) to the PA3 input and the mid-rail divider to PC0.
 
-```
-#define ENTROPY_USE_COUNTER_PATTERN 0
-```
-
-Rebuild, flash, and capture again. The CSV will now contain ADC samples instead of the counter. The two channels alternate in `channel_index` 0 and 1 as documented in [docs/ENTROPY_CAPTURE_PIPELINE.md](docs/ENTROPY_CAPTURE_PIPELINE.md) section 9.
+Once wired, the zener channel shows broadband noise well above the baseline channel. The two channels alternate in `channel_index` 0 and 1 as documented in [docs/ENTROPY_CAPTURE_PIPELINE.md](docs/ENTROPY_CAPTURE_PIPELINE.md) section 9; subtract the baseline from the zener channel to isolate the avalanche noise.
 
 ### 12. Run the validation comparison set
 
@@ -368,11 +369,19 @@ tinychaos/
     README.md                     tools-local quickstart
     src/tinychaos/                package source
     tests/                        pytest suite (68 tests)
-  firmware/                       STM32 firmware (CubeMX + HAL + Makefile)
-    Makefile                      host self-test plus CubeMX-Makefile passthrough
-    README.md                     CubeMX generation and integration steps
-    Core/Inc/                     entropy_config.h, entropy_protocol.h, usb_stream.h, serial_stream.h
-    Core/Src/                     entropy_protocol.c, usb_stream.c, serial_stream.c, main_skeleton.c
+  firmware/                       STM32 firmware
+    nucleo-h753zi/                complete, committed CubeMX/CMake project (build + flash this)
+      tinychaos.ioc               CubeMX project
+      CMakeLists.txt              CMake + Ninja build
+      STM32H753XX_FLASH.ld        linker script
+      flash.sh / flash.ps1        build + flash over the on-board ST-LINK
+      Core/Src/entropy_app.c      app: TIM3 -> ADC1 (PA3 + PC0) -> DMA -> framed packets
+      Core/ Drivers/ Middlewares/ CubeMX-generated HAL + USB device stack
+    README.md                     build/flash instructions + transport notes
+    NUCLEO_SETUP.md               from-scratch CubeMX regeneration recipe
+    Makefile                      on-host protocol self-test (no STM32 toolchain)
+    Core/Inc/                     entropy_config.h, entropy_protocol.h, usb_stream.h, serial_stream.h (portable, shared)
+    Core/Src/                     entropy_protocol.c, usb_stream.c, serial_stream.c, main_skeleton.c (legacy ref)
     test/                         test_protocol_host.c
   firmware-esp32s3/               ESP32-S3 firmware (PlatformIO + Arduino-ESP32 v3.x)
     platformio.ini                pioarduino platform + ElegantOTA + AsyncWebServer deps
