@@ -1,19 +1,22 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace TinyChaos.Gui;
 
 /// <summary>
-/// Runs the firmware build/flash subprocess and streams stdout+stderr line
-/// by line to the supplied callback.
+/// Runs the firmware build/flash subprocess and streams stdout+stderr line by
+/// line to the supplied callback.
 ///
-/// The implementation is intentionally minimal: it shells out to <c>make</c>
-/// in the firmware directory. The actual build commands live in the
-/// firmware Makefile so they stay testable from the terminal and identical
-/// across the CLI, the GUI, and CI.
+/// Build and flash drive the committed CubeMX/CMake project under
+/// <c>firmware/nucleo-h753zi/</c> through its <c>flash.sh</c> (macOS/Linux) or
+/// <c>flash.ps1</c> (Windows) wrapper - the exact scripts you run by hand, so
+/// the GUI, the terminal, and CI stay identical. The on-host protocol self-test
+/// still uses the firmware <c>Makefile</c>'s <c>test</c> target (it needs no
+/// STM32 toolchain).
 /// </summary>
 public sealed class BuildFlashService
 {
@@ -45,16 +48,67 @@ public sealed class BuildFlashService
         return null;
     }
 
+    /// <summary>The committed STM32 project directory: <c>firmware/nucleo-h753zi</c>.</summary>
+    public static string NucleoProjectDirectory(string firmwareDir)
+        => Path.Combine(firmwareDir, "nucleo-h753zi");
+
     /// <summary>
-    /// Run <c>make</c> with the given Makefile target in the firmware
-    /// directory. Streams every line of stdout and stderr to
-    /// <paramref name="onLine"/>. Returns the exit code; -1 if the process
-    /// could not be started.
-    ///
-    /// Output lines from stderr are prefixed with the literal <c>"! "</c>
-    /// so the GUI can colour them red if it wants.
+    /// Build and/or flash the <c>nucleo-h753zi</c> project via its flash script.
+    /// <paramref name="scriptArg"/> is the script subcommand: <c>"build"</c>,
+    /// <c>"flash"</c>, or <c>"clean"</c>. Picks <c>flash.ps1</c> on Windows and
+    /// <c>flash.sh</c> elsewhere. Returns the exit code; -1 if it could not
+    /// start, -2 if cancelled.
     /// </summary>
-    public async Task<int> RunMakeAsync(
+    public Task<int> RunFlashScriptAsync(
+        string firmwareDir,
+        string scriptArg,
+        Action<string> onLine,
+        CancellationToken cancellationToken = default)
+    {
+        string nucleoDir = NucleoProjectDirectory(firmwareDir);
+        bool windows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+        string scriptName = windows ? "flash.ps1" : "flash.sh";
+        string scriptPath = Path.Combine(nucleoDir, scriptName);
+
+        if (!Directory.Exists(nucleoDir) || !File.Exists(scriptPath))
+        {
+            onLine($"! firmware project not found: {scriptPath}");
+            onLine("! expected the committed CubeMX/CMake project at firmware/nucleo-h753zi/.");
+            return Task.FromResult(-1);
+        }
+
+        ProcessStartInfo psi;
+        if (windows)
+        {
+            psi = new ProcessStartInfo { FileName = "powershell" };
+            psi.ArgumentList.Add("-NoProfile");
+            psi.ArgumentList.Add("-ExecutionPolicy");
+            psi.ArgumentList.Add("Bypass");
+            psi.ArgumentList.Add("-File");
+            psi.ArgumentList.Add(scriptPath);
+            if (!string.IsNullOrEmpty(scriptArg)) psi.ArgumentList.Add(scriptArg);
+        }
+        else
+        {
+            // /bin/bash avoids depending on the script's executable bit.
+            psi = new ProcessStartInfo { FileName = "/bin/bash" };
+            psi.ArgumentList.Add(scriptPath);
+            if (!string.IsNullOrEmpty(scriptArg)) psi.ArgumentList.Add(scriptArg);
+        }
+        psi.WorkingDirectory = nucleoDir;
+
+        string prefix = windows ? $".\\{scriptName}" : $"./{scriptName}";
+        string hint = "! need the Arm GNU toolchain, CMake, Ninja and st-flash on PATH. "
+                    + "See firmware/README.md for the per-OS install.";
+        return RunProcessAsync(psi, $"$ {prefix} {scriptArg} (in {nucleoDir})", hint, onLine, cancellationToken);
+    }
+
+    /// <summary>
+    /// Run <c>make</c> with the given Makefile target in the firmware directory.
+    /// Used for the on-host protocol self-test (<c>make test</c>), which needs
+    /// no STM32 toolchain. Returns the exit code; -1 if it could not start.
+    /// </summary>
+    public Task<int> RunMakeAsync(
         string firmwareDir,
         string target,
         Action<string> onLine,
@@ -63,24 +117,35 @@ public sealed class BuildFlashService
         if (!Directory.Exists(firmwareDir))
         {
             onLine($"! firmware directory not found: {firmwareDir}");
-            return -1;
+            return Task.FromResult(-1);
         }
+        var psi = new ProcessStartInfo { FileName = "make", WorkingDirectory = firmwareDir };
+        if (!string.IsNullOrEmpty(target)) psi.ArgumentList.Add(target);
+        string hint = "! is `make` on PATH? See firmware/README.md for OS-specific install.";
+        return RunProcessAsync(psi, $"$ make {target} (in {firmwareDir})", hint, onLine, cancellationToken);
+    }
+
+    /// <summary>
+    /// Shared subprocess runner: streams stdout/stderr to <paramref name="onLine"/>
+    /// (stderr prefixed with "! " so the GUI can colour it), supports
+    /// cancellation, and reports the exit code.
+    /// </summary>
+    private async Task<int> RunProcessAsync(
+        ProcessStartInfo psi,
+        string banner,
+        string startHint,
+        Action<string> onLine,
+        CancellationToken cancellationToken)
+    {
+        psi.RedirectStandardOutput = true;
+        psi.RedirectStandardError = true;
+        psi.UseShellExecute = false;
+        psi.CreateNoWindow = true;
 
         IsRunning = true;
         try
         {
-            var psi = new ProcessStartInfo
-            {
-                FileName = "make",
-                WorkingDirectory = firmwareDir,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            if (!string.IsNullOrEmpty(target)) psi.ArgumentList.Add(target);
-
-            onLine($"$ make {target} (in {firmwareDir})");
+            onLine(banner);
 
             Process proc;
             try
@@ -90,8 +155,8 @@ public sealed class BuildFlashService
             }
             catch (Exception ex)
             {
-                onLine($"! could not start make: {ex.Message}");
-                onLine("! is `make` on PATH? See firmware/README.md for OS-specific install.");
+                onLine($"! could not start {psi.FileName}: {ex.Message}");
+                onLine(startHint);
                 return -1;
             }
 
@@ -111,7 +176,7 @@ public sealed class BuildFlashService
                 return -2;
             }
 
-            onLine($"--- make exited with code {proc.ExitCode} ---");
+            onLine($"--- exited with code {proc.ExitCode} ---");
             return proc.ExitCode;
         }
         finally

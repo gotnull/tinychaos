@@ -570,19 +570,25 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     // ----- Build & Flash commands -----
 
+    // Build + flash drive the committed nucleo-h753zi CMake project via its
+    // flash.sh / flash.ps1 wrapper. The self-test stays on `make test` (the
+    // portable protocol check, no STM32 toolchain needed).
     [RelayCommand]
-    private Task BuildFirmware() => RunMakeTargetAsync(target: "", label: "build");
+    private Task BuildFirmware() => RunFirmwareJobAsync("build",
+        onLine => _buildFlash.RunFlashScriptAsync(FirmwareDirectory, "build", onLine));
 
     [RelayCommand]
-    private Task FlashFirmware() => RunMakeTargetAsync(target: "flash", label: "flash");
+    private Task FlashFirmware() => RunFirmwareJobAsync("flash",
+        onLine => _buildFlash.RunFlashScriptAsync(FirmwareDirectory, "flash", onLine));
 
     [RelayCommand]
-    private Task RunFirmwareSelfTest() => RunMakeTargetAsync(target: "test", label: "host test");
+    private Task RunFirmwareSelfTest() => RunFirmwareJobAsync("host test",
+        onLine => _buildFlash.RunMakeAsync(FirmwareDirectory, "test", onLine));
 
     [RelayCommand]
     private void ClearBuildLog() => BuildLog = "";
 
-    private async Task RunMakeTargetAsync(string target, string label)
+    private async Task RunFirmwareJobAsync(string label, Func<Action<string>, Task<int>> job)
     {
         if (IsBusyBuilding)
         {
@@ -594,10 +600,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         BuildStatusDotBrush = StatusBrushes.Warning;
         try
         {
-            int code = await _buildFlash.RunMakeAsync(
-                FirmwareDirectory,
-                target,
-                AppendBuildLine);
+            int code = await job(AppendBuildLine);
             if (code == 0)
             {
                 BuildStatusText = $"{label} ok";
