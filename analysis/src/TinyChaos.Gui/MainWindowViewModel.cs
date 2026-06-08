@@ -196,9 +196,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>Y-axis upper bound for the waveform zoom view. -1 = full-scale auto.</summary>
     [ObservableProperty] private double _waveformYMax = -1.0;
 
+    /// <summary>When true, Y range continuously refits channel 0 on every UI tick.</summary>
+    [ObservableProperty] private bool _autoZoomEnabled = false;
+
     [RelayCommand]
     private void LockRange()
     {
+        AutoZoomEnabled = false;
         var (min, max) = Waveform.GetMinMax(0);
         if (min >= max) return;
         double margin = (max - min) * 0.10;
@@ -209,6 +213,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void ResetRange()
     {
+        AutoZoomEnabled = false;
         WaveformYMin = -1.0;
         WaveformYMax = -1.0;
     }
@@ -560,6 +565,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (s.DeviceTapped)
         {
             ActiveTabIndex = 0;
+        }
+
+        if (_autoZoomEnabled)
+        {
+            var (min, max) = Waveform.GetMinMax(0);
+            if (max > min)
+            {
+                double margin = (max - min) * 0.10;
+                WaveformYMin = Math.Max(0, min - margin);
+                WaveformYMax = Math.Min(WaveformFullScale, max + margin);
+            }
         }
     }
 

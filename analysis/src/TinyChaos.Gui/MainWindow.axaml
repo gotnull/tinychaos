@@ -114,6 +114,10 @@
                                             </DataTemplate>
                                         </ComboBox.ItemTemplate>
                                     </ComboBox>
+                                    <ToggleButton Classes="secondary"
+                                        IsChecked="{Binding AutoZoomEnabled, Mode=TwoWay}"
+                                        Content="Auto-zoom"
+                                        VerticalAlignment="Center" />
                                     <Button Classes="secondary" Content="Lock range"
                                         Command="{Binding LockRangeCommand}"
                                         VerticalAlignment="Center" />

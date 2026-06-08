@@ -109,6 +109,17 @@
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
 
+        <Style Selector="ToggleButton.secondary">
+            <Setter Property="MinWidth" Value="92" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <Style Selector="ToggleButton.secondary:checked /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Accent}" />
+            <Setter Property="TextElement.Foreground" Value="White" />
+        </Style>
+
         <!-- Record button: a strong red accent so the recording control is
              visually distinct from the primary action. Label toggles between
              "Record" and "Stop"; colour stays red because the button always
