@@ -36,6 +36,22 @@ def test_session_fresh_is_returned(tmp_db):
     assert tmp_db.db_get_session(9) == "fresh-sess"
 
 
+def test_session_turn_cap(tmp_db):
+    # Continuing the same session bumps the turn count; once it hits the cap the
+    # session is abandoned so context (and token cost) can't grow unbounded.
+    for _ in range(tmp_db.SESSION_MAX_TURNS):
+        tmp_db.db_set_session(3, "same-sess")
+    assert tmp_db.db_get_session(3) is None
+
+
+def test_session_new_id_resets_turns(tmp_db):
+    for _ in range(tmp_db.SESSION_MAX_TURNS):
+        tmp_db.db_set_session(4, "sess-a")
+    assert tmp_db.db_get_session(4) is None      # capped
+    tmp_db.db_set_session(4, "sess-b")           # different id resets the count
+    assert tmp_db.db_get_session(4) == "sess-b"
+
+
 # ---- interactions + stats ------------------------------------------------
 
 def test_stats_empty(tmp_db):

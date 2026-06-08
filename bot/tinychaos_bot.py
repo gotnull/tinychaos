@@ -159,6 +159,11 @@ def init_db() -> None:
     with _db() as c:
         c.execute("CREATE TABLE IF NOT EXISTS sessions("
                   "chat_id INTEGER PRIMARY KEY, session_id TEXT, updated_at TEXT)")
+        # turns: how many exchanges the current session has accumulated (token cap).
+        try:
+            c.execute("ALTER TABLE sessions ADD COLUMN turns INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # column already exists
         c.execute("CREATE TABLE IF NOT EXISTS interactions("
                   "id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER, chat_title TEXT,"
                   " user_id INTEGER, username TEXT, question TEXT, answer TEXT,"
@@ -175,19 +180,25 @@ def _now() -> str:
     return datetime.datetime.utcnow().isoformat(timespec="seconds")
 
 
-# Abandon (don't resume) a conversation older than this. A resumed session reloads
-# its whole transcript each turn; a stale, grown one makes `claude --resume` slow
-# enough to time out. Past this age we start fresh instead.
+# A resumed session re-feeds its WHOLE transcript to claude as input tokens every
+# turn - so an unbounded conversation costs quadratic tokens and eventually times
+# out. We cap context two ways: abandon a session older than MAX_AGE, and start
+# fresh after MAX_TURNS exchanges. Both keep token use (and latency) bounded.
 SESSION_MAX_AGE_SEC = float(os.getenv("TINYCHAOS_BOT_SESSION_MAX_AGE", str(6 * 3600)))
+SESSION_MAX_TURNS = int(os.getenv("TINYCHAOS_BOT_SESSION_MAX_TURNS", "6"))
 
 
 def db_get_session(chat_id: int):
+    """Return the chat's resumable session id, or None to start fresh - None when
+    there's no session, it's too old, or it has hit the turn cap."""
     with _db() as c:
-        row = c.execute("SELECT session_id, updated_at FROM sessions WHERE chat_id=?",
+        row = c.execute("SELECT session_id, updated_at, turns FROM sessions WHERE chat_id=?",
                         (chat_id,)).fetchone()
     if not row:
         return None
-    sid, updated = row
+    sid, updated, turns = row
+    if turns is not None and turns >= SESSION_MAX_TURNS:
+        return None  # capped: drop the context, next answer starts fresh & cheap
     try:
         age = (datetime.datetime.utcnow()
                - datetime.datetime.fromisoformat(updated)).total_seconds()
@@ -198,9 +209,14 @@ def db_get_session(chat_id: int):
 
 def db_set_session(chat_id: int, session_id: str) -> None:
     with _db() as c:
-        c.execute("INSERT INTO sessions(chat_id, session_id, updated_at) VALUES(?,?,?) "
+        prev = c.execute("SELECT session_id, turns FROM sessions WHERE chat_id=?",
+                         (chat_id,)).fetchone()
+        # Same session id continuing -> count the turn; a new id -> reset to 1.
+        turns = (prev[1] or 0) + 1 if (prev and prev[0] == session_id) else 1
+        c.execute("INSERT INTO sessions(chat_id, session_id, updated_at, turns) VALUES(?,?,?,?) "
                   "ON CONFLICT(chat_id) DO UPDATE SET session_id=excluded.session_id, "
-                  "updated_at=excluded.updated_at", (chat_id, session_id, _now()))
+                  "updated_at=excluded.updated_at, turns=excluded.turns",
+                  (chat_id, session_id, _now(), turns))
 
 
 def db_clear_session(chat_id: int) -> None:
