@@ -60,7 +60,9 @@ COOLDOWN = float(os.getenv("TINYCHAOS_BOT_COOLDOWN", "15"))
 BOT_OWNER = int(os.getenv("TINYCHAOS_BOT_OWNER", "680585616"))
 _allowed = os.getenv("TINYCHAOS_BOT_ALLOWED_CHATS", "").strip()
 ALLOWED_CHATS = {int(x) for x in _allowed.split(",") if x.strip()} if _allowed else None
-CLAUDE_TIMEOUT = 150  # seconds per question
+# Seconds per claude run. Repo-wide / multi-file questions and edit-applies can
+# take a while; 150s was too low (kept timing out). Override via env if needed.
+CLAUDE_TIMEOUT = float(os.getenv("TINYCHAOS_BOT_TIMEOUT", "300"))
 
 # /firmware: where to find prebuilt firmware (public GitHub Releases, no auth).
 GITHUB_REPO = os.getenv("TINYCHAOS_GH_REPO", "gotnull/tinychaos").strip()
@@ -173,10 +175,25 @@ def _now() -> str:
     return datetime.datetime.utcnow().isoformat(timespec="seconds")
 
 
+# Abandon (don't resume) a conversation older than this. A resumed session reloads
+# its whole transcript each turn; a stale, grown one makes `claude --resume` slow
+# enough to time out. Past this age we start fresh instead.
+SESSION_MAX_AGE_SEC = float(os.getenv("TINYCHAOS_BOT_SESSION_MAX_AGE", str(6 * 3600)))
+
+
 def db_get_session(chat_id: int):
     with _db() as c:
-        row = c.execute("SELECT session_id FROM sessions WHERE chat_id=?", (chat_id,)).fetchone()
-    return row[0] if row else None
+        row = c.execute("SELECT session_id, updated_at FROM sessions WHERE chat_id=?",
+                        (chat_id,)).fetchone()
+    if not row:
+        return None
+    sid, updated = row
+    try:
+        age = (datetime.datetime.utcnow()
+               - datetime.datetime.fromisoformat(updated)).total_seconds()
+    except (ValueError, TypeError):
+        age = 0
+    return None if age > SESSION_MAX_AGE_SEC else sid
 
 
 def db_set_session(chat_id: int, session_id: str) -> None:
@@ -782,6 +799,12 @@ async def _on_approve(update, context, query, pending: dict, token: str) -> None
         await query.edit_message_text("✅ Applied." if ok else "⚠️ Applied, but tests are failing.")
     except Exception:
         pass
+
+    # An apply resumes the chat's answer-session and appends the (large) file
+    # reads/edits to it. Left in place, every later /ask would reload that
+    # ballooning transcript and eventually time out. Clear it so answers start
+    # fresh after a code change lands - the change is already in the tree.
+    db_clear_session(orig_chat)
 
     who = pending.get("requester_name") or "someone"
     header = (f"✅ Change approved and applied (requested by {who}):"

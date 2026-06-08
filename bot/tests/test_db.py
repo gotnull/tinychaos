@@ -22,6 +22,20 @@ def test_session_clear(tmp_db):
     assert tmp_db.db_get_session(1) is None
 
 
+def test_session_stale_is_abandoned(tmp_db):
+    # A session whose last update is older than SESSION_MAX_AGE_SEC must not be
+    # resumed (it would reload a huge transcript and time out).
+    with tmp_db._db() as c:
+        c.execute("INSERT INTO sessions(chat_id, session_id, updated_at) VALUES(?,?,?)",
+                  (9, "old-sess", "2000-01-01T00:00:00"))
+    assert tmp_db.db_get_session(9) is None
+
+
+def test_session_fresh_is_returned(tmp_db):
+    tmp_db.db_set_session(9, "fresh-sess")   # updated_at = now
+    assert tmp_db.db_get_session(9) == "fresh-sess"
+
+
 # ---- interactions + stats ------------------------------------------------
 
 def test_stats_empty(tmp_db):
