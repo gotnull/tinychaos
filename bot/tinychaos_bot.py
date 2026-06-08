@@ -577,6 +577,17 @@ async def _send_md(bot, chat_id: int, text: str) -> None:
         await bot.send_message(chat_id=chat_id, text=chunk)
 
 
+async def _safe_answer(query, text: str | None = None, alert: bool = False) -> None:
+    """Acknowledge a callback query, swallowing the BadRequest Telegram raises
+    when the query id has already expired (~15s). Always answer BEFORE any slow
+    work so the id stays valid; this just keeps a late/duplicate ack from
+    crashing the handler."""
+    try:
+        await query.answer(text, show_alert=alert)
+    except Exception as e:
+        log.warning("callback answer failed (stale query?): %s", e)
+
+
 async def _set_orig_button(context, pending: dict, label: str) -> None:
     """Replace the original answer's inline keyboard with a non-actionable
     status button (e.g. '✅ Applied'), so the request can't be re-triggered."""
@@ -594,11 +605,16 @@ async def _on_apply_request(update, context, query, pending: dict, token: str) -
     this confirmation step."""
     status = pending["status"]
     if status == "applied":
-        await query.answer("This change was already applied.", show_alert=True)
+        await _safe_answer(query, "This change was already applied.", alert=True)
         return
     if status in ("requested", "approving"):
-        await query.answer("Already waiting on the admin.", show_alert=True)
+        await _safe_answer(query, "Already waiting on the admin.", alert=True)
         return
+
+    # Acknowledge the tap IMMEDIATELY - a callback query id expires in ~15s, so
+    # we must answer before the DB write + owner DM below, never after, or
+    # Telegram invalidates it and the request is silently lost.
+    await _safe_answer(query, "Sent to the admin for approval.")
 
     tapper = query.from_user
     name = (tapper.username and f"@{tapper.username}") or tapper.full_name or str(tapper.id)
@@ -615,26 +631,32 @@ async def _on_apply_request(update, context, query, pending: dict, token: str) -
     ]])
     try:
         await context.bot.send_message(chat_id=BOT_OWNER, text=prompt, reply_markup=kb)
-        await query.answer("Sent to the admin for approval.")
     except Exception as e:
+        # The query is already answered, so report the failure in-chat (not via
+        # query.answer, which is spent) and reset so it can be tapped again.
         log.error("could not DM owner for approval: %s", e)
         db_set_pending(token, status="offered")
         await _set_orig_button(context, pending, "✏️ Apply this change")
-        await query.answer("Couldn't reach the admin - they must start a DM with me first.",
-                           show_alert=True)
+        try:
+            await context.bot.send_message(
+                pending["orig_chat_id"],
+                "I couldn't reach the admin to approve that - they need to open a DM "
+                "with me first. Nothing was changed; tap Apply again once that's done.")
+        except Exception:
+            pass
 
 
 async def _on_approve(update, context, query, pending: dict, token: str) -> None:
     """Owner approved an edit. Run the write step, then post the diff + test
     results back to the chat where it was requested."""
     if not query.from_user or query.from_user.id != BOT_OWNER:
-        await query.answer("Only the admin can approve edits.", show_alert=True)
+        await _safe_answer(query, "Only the admin can approve edits.", alert=True)
         return
     if pending["status"] in ("applied", "approving"):
-        await query.answer("Already handled.", show_alert=True)
+        await _safe_answer(query, "Already handled.", alert=True)
         return
     db_set_pending(token, status="approving")
-    await query.answer("Approved - applying…")
+    await _safe_answer(query, "Approved - applying…")
     try:
         await query.edit_message_text("⏳ Applying the change…")
     except Exception:
@@ -668,13 +690,13 @@ async def _on_approve(update, context, query, pending: dict, token: str) -> None
 async def _on_reject(update, context, query, pending: dict, token: str) -> None:
     """Owner rejected an edit. Discard it and tell the requesting chat."""
     if not query.from_user or query.from_user.id != BOT_OWNER:
-        await query.answer("Only the admin can decide on edits.", show_alert=True)
+        await _safe_answer(query, "Only the admin can decide on edits.", alert=True)
         return
     if pending["status"] in ("applied", "rejected"):
-        await query.answer("Already handled.", show_alert=True)
+        await _safe_answer(query, "Already handled.", alert=True)
         return
     db_set_pending(token, status="rejected")
-    await query.answer("Rejected.")
+    await _safe_answer(query, "Rejected.")
     try:
         await query.edit_message_text("❌ Rejected - nothing was changed.")
     except Exception:
@@ -693,12 +715,12 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not query or not query.data:
         return
     if query.data == "noop":
-        await query.answer()
+        await _safe_answer(query)
         return
     action, _, token = query.data.partition(":")
     pending = db_get_pending(token) if token else None
     if not pending:
-        await query.answer("This request has expired.", show_alert=True)
+        await _safe_answer(query, "This request has expired.", alert=True)
         return
     if action == "apply":
         await _on_apply_request(update, context, query, pending, token)
@@ -707,7 +729,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     elif action == "no":
         await _on_reject(update, context, query, pending, token)
     else:
-        await query.answer()
+        await _safe_answer(query)
 
 
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -831,6 +853,12 @@ async def _post_init(app: Application) -> None:
              len(PUBLIC_COMMANDS), len(ADMIN_COMMANDS))
 
 
+async def _on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log handler exceptions instead of letting them bubble up as an
+    unhandled 'No error handlers are registered' traceback."""
+    log.error("handler error: %s", context.error, exc_info=context.error)
+
+
 def main() -> None:
     if not TOKEN:
         raise SystemExit("TELEGRAM_BOT_TOKEN not set (see bot/.env.example)")
@@ -839,7 +867,12 @@ def main() -> None:
                     "`claude -p` may fail to authenticate when run as a service.")
     init_db()
 
-    app = Application.builder().token(TOKEN).post_init(_post_init).build()
+    # concurrent_updates(True): process updates in parallel tasks so a button
+    # tap (which must be answered within ~15s) is never queued behind an
+    # in-flight /ask answer (a ~30s Claude run). Claude runs are still
+    # serialized by _claude_lock; only the dispatch is concurrent.
+    app = (Application.builder().token(TOKEN)
+           .post_init(_post_init).concurrent_updates(True).build())
     app.add_handler(CommandHandler("ask", cmd_ask))
     app.add_handler(CommandHandler("reset", cmd_reset))
     app.add_handler(CommandHandler("stats", cmd_stats))
@@ -851,6 +884,7 @@ def main() -> None:
     # the only non-command messages the bot receives anyway). Commands are
     # excluded so /ask isn't double-handled.
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_mention))
+    app.add_error_handler(_on_error)
     log.info("tinychaos bot up; repo=%s model=%s", REPO_DIR, MODEL)
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
