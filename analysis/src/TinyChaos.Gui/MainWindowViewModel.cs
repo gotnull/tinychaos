@@ -176,6 +176,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _recordButtonLabel = "Record";
     [ObservableProperty] private string _recordingPathText = "";
 
+    // Entropy harvest (live capture only)
+    [ObservableProperty] private bool _isHarvesting;
+    [ObservableProperty] private string _harvestButtonLabel = "Harvest";
+    [ObservableProperty] private string _harvestStatusText = "";
+
     public WaveformModel Waveform { get; }
     public HistogramModel Histogram { get; }
 
@@ -497,19 +502,60 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
+    private void ToggleHarvesting()
+    {
+        if (_capture.IsHarvesting)
+        {
+            _capture.StopHarvesting();
+            IsHarvesting = false;
+            HarvestButtonLabel = "Harvest";
+            HarvestStatusText = "";
+            return;
+        }
+        if (!_capture.IsRunning)
+        {
+            ConnectionStatusText = "Connect a live capture before harvesting";
+            StatusDotBrush = StatusBrushes.Warning;
+            return;
+        }
+        var ts = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        var labelToken = string.IsNullOrWhiteSpace(ValidationLabel) ? "harvest" : ValidationLabel;
+        var safeLabel = string.Concat(labelToken.Split(Path.GetInvalidFileNameChars()));
+        var path = Path.Combine(SamplesDirectory, $"{safeLabel}-{ts}.hex");
+        try
+        {
+            _capture.StartHarvesting(path);
+            IsHarvesting = true;
+            HarvestButtonLabel = "Stop harvest";
+            HarvestStatusText = path;
+        }
+        catch (Exception ex)
+        {
+            ConnectionStatusText = $"Harvest failed: {ex.Message}";
+            StatusDotBrush = StatusBrushes.Error;
+        }
+    }
+
+    [RelayCommand]
     private void ToggleConnection()
     {
         if (_capture.IsRunning)
         {
             _capture.Stop();
-            // Stopping the capture also stops recording (CaptureService.Stop
-            // calls StopRecording). Mirror that into the view-model state.
+            // Stopping the capture also stops recording and harvest.
+            // Mirror that into the view-model state.
             if (IsRecording)
             {
                 IsRecording = false;
                 RecordButtonLabel = "Record";
                 RecordingPathText = "";
                 RefreshSamples();
+            }
+            if (IsHarvesting)
+            {
+                IsHarvesting = false;
+                HarvestButtonLabel = "Harvest";
+                HarvestStatusText = "";
             }
             ConnectButtonLabel = "Connect";
             ConnectionStatusText = "Disconnected";
@@ -576,6 +622,22 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (s.DeviceTapped)
         {
             ActiveTabIndex = 0;
+        }
+
+        if (IsHarvesting)
+        {
+            if (!_capture.IsHarvesting)
+            {
+                // Harvest stopped unexpectedly (e.g. connection dropped mid-harvest).
+                IsHarvesting = false;
+                HarvestButtonLabel = "Harvest";
+                HarvestStatusText = "";
+            }
+            else
+            {
+                long bytes = _capture.HarvestBytesWritten;
+                HarvestStatusText = $"{_capture.HarvestPath}  ({bytes:N0} bytes)";
+            }
         }
 
         if (AutoZoomEnabled)

@@ -35,7 +35,7 @@
                 </Grid>
 
                 <Grid Grid.Row="2"
-                    ColumnDefinitions="Auto,*,20,Auto,220,Auto,Auto,Auto"
+                    ColumnDefinitions="Auto,*,20,Auto,220,Auto,Auto,Auto,Auto"
                     RowDefinitions="Auto">
                     <TextBlock Grid.Column="0" Classes="formLabel" Text="Port" />
                     <ComboBox Grid.Column="1"
@@ -57,19 +57,26 @@
                         Command="{Binding ToggleRecordingCommand}"
                         Content="{Binding RecordButtonLabel}"
                         Margin="10,0,0,0" />
-                    <Button Grid.Column="7" Classes="primary"
+                    <Button Grid.Column="7" Classes="record"
+                        Command="{Binding ToggleHarvestingCommand}"
+                        Content="{Binding HarvestButtonLabel}"
+                        Margin="10,0,0,0" />
+                    <Button Grid.Column="8" Classes="primary"
                         Command="{Binding ToggleConnectionCommand}"
                         Content="{Binding ConnectButtonLabel}"
                         Margin="10,0,0,0" />
                 </Grid>
 
-                <!-- Recording-path readout, shown only while recording -->
-                <TextBlock Grid.Row="3"
-                    Classes="caption"
-                    Margin="0,8,0,0"
-                    Text="{Binding RecordingPathText, StringFormat='recording to {0}'}"
-                    IsVisible="{Binding IsRecording}"
-                    HorizontalAlignment="Right" />
+                <!-- Status readouts (recording + harvest), shown only when active -->
+                <StackPanel Grid.Row="3" Orientation="Vertical"
+                    HorizontalAlignment="Right" Margin="0,8,0,0" Spacing="4">
+                    <TextBlock Classes="caption"
+                        Text="{Binding RecordingPathText, StringFormat='recording to {0}'}"
+                        IsVisible="{Binding IsRecording}" />
+                    <TextBlock Classes="caption"
+                        Text="{Binding HarvestStatusText, StringFormat='harvesting: {0}'}"
+                        IsVisible="{Binding IsHarvesting}" />
+                </StackPanel>
             </Grid>
         </Border>
 

@@ -59,9 +59,16 @@ public sealed class CaptureService : IDisposable
     // framer. Writes happen on the read thread; the GUI manages start/stop.
     private FileStream? _recordingStream;
 
+    // Optional entropy harvest. When active, channel-0 (zener) samples are
+    // fed to the model which detects spikes and writes hex bytes to a file.
+    private EntropyHarvestModel? _harvest;
+
     public bool IsRunning { get; private set; }
     public bool IsRecording => _recordingStream != null;
     public string? RecordingPath { get; private set; }
+    public bool IsHarvesting => _harvest?.IsOpen ?? false;
+    public string? HarvestPath { get; private set; }
+    public long HarvestBytesWritten => _harvest?.BytesWritten ?? 0;
 
     public CaptureService(WaveformModel waveform, HistogramModel histogram, int channelCount)
     {
@@ -101,6 +108,7 @@ public sealed class CaptureService : IDisposable
         _cts = null;
         _readTask = null;
         StopRecording();
+        StopHarvesting();
     }
 
     /// <summary>
@@ -125,6 +133,31 @@ public sealed class CaptureService : IDisposable
         try { stream.Flush(); } catch { /* swallow */ }
         try { stream.Dispose(); } catch { /* swallow */ }
         RecordingPath = null;
+    }
+
+    /// <summary>
+    /// Start detecting avalanche spikes and writing hex bytes to
+    /// <paramref name="path"/>. Opens the harvest model; any previously active
+    /// harvest is stopped first.
+    /// </summary>
+    public void StartHarvesting(string path)
+    {
+        StopHarvesting();
+        var h = new EntropyHarvestModel();
+        h.Open(path);
+        lock (_lock) { _harvest = h; }
+        HarvestPath = path;
+    }
+
+    /// <summary>Stop an active entropy harvest and close the file. No-op if none.</summary>
+    public void StopHarvesting()
+    {
+        EntropyHarvestModel? h;
+        lock (_lock) { h = _harvest; _harvest = null; }
+        HarvestPath = null;
+        if (h is null) return;
+        try { h.Close(); } catch { /* swallow */ }
+        try { h.Dispose(); } catch { /* swallow */ }
     }
 
     /// <summary>
@@ -272,6 +305,7 @@ public sealed class CaptureService : IDisposable
                         _channelStats.Add(ch, v);
                         _waveform.Append(ch, v);
                         _histogram.Add(ch, v);
+                        if (ch == 0) _harvest?.Feed(v);
                     }
                 }
                 break;
