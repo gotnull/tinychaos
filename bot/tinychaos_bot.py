@@ -399,11 +399,15 @@ async def _run_one_suite(argv: list[str], cwd, timeout: int) -> tuple[str, str]:
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
         out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         text = out.decode(errors="replace").strip()
+        nonempty = [ln.strip() for ln in text.splitlines() if ln.strip()]
         if proc.returncode == 0:
-            tail = next((ln for ln in reversed(text.splitlines()) if ln.strip()), "ok")
-            return ("pass", tail[-200:])
-        lines = [ln for ln in text.splitlines() if ln.strip()]
-        return ("fail", "\n".join(lines[-12:])[-1200:] or "(no output)")
+            # Prefer the actual result line (pytest "N passed", dotnet "Passed!",
+            # firmware "all checks passed") over a trailing progress/dots line.
+            keys = ("passed", "failed", "error", "Passed!", "checks passed", "Total:")
+            line = next((ln for ln in reversed(nonempty) if any(k in ln for k in keys)),
+                        nonempty[-1] if nonempty else "ok")
+            return ("pass", line[-200:])
+        return ("fail", "\n".join(nonempty[-12:])[-1200:] or "(no output)")
     except FileNotFoundError:
         return ("skip", f"{argv[0]} not on PATH")
     except asyncio.TimeoutError:
@@ -430,10 +434,12 @@ async def _run_tests() -> tuple[bool, str]:
 
     # (label, argv, cwd, timeout_seconds) - only the ones that actually exist.
     suites: list[tuple[str, list[str], object, int]] = []
+    # No explicit -q: bot/pytest.ini already sets it, and a second -q becomes
+    # -qq, which suppresses pytest's "N passed" summary line.
     if (tools_dir / "tests").exists():
-        suites.append(("Python tools", [tools_py, "-m", "pytest", "-q"], tools_dir, 300))
+        suites.append(("Python tools", [tools_py, "-m", "pytest"], tools_dir, 300))
     if (BOT_DIR / "tests").exists():
-        suites.append(("Bot", [bot_py, "-m", "pytest", "-q"], BOT_DIR, 300))
+        suites.append(("Bot", [bot_py, "-m", "pytest"], BOT_DIR, 300))
     if (analysis_dir / "TinyChaos.sln").exists():
         suites.append(("C# (.NET)", ["dotnet", "test", "-c", "Debug", "--nologo"], analysis_dir, 600))
     if (fw_dir / "Makefile").exists():
