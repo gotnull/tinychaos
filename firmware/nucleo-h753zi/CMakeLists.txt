@@ -55,7 +55,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # tinychaos application glue (board-specific)
     Core/Src/entropy_app.c
     # Portable wire-protocol module (single source of truth, shared with the
-    # ESP32 firmware + host tools). Referenced from ../Core, not duplicated.
+    # host tools). Referenced from ../Core, not duplicated.
     ${CMAKE_CURRENT_SOURCE_DIR}/../Core/Src/entropy_protocol.c
     # ADC1 HAL driver: ADC isn't in the .ioc (brought up by hand in
     # entropy_app.c); compiles under HAL_ADC_MODULE_ENABLED below.

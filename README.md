@@ -19,8 +19,7 @@ Every stage of the pipeline is observable. There is no manual hex editing, no AS
 | Host C# Avalonia GUI (cross-platform)      | Done. Tabbed layout: Live capture (60 fps waveform, cumulative histogram, per-channel statistics), Samples (replay any `.bin`), Firmware (build + flash the `nucleo-h753zi` project via its `flash.sh`/`flash.ps1`, plus the on-host self-test, with a live streaming console). Persistent connection toolbar with a Record / Stop toggle that writes the live byte stream to a timestamped `.bin` under `samples/`. macOS, Windows, Linux from one codebase. See [analysis/README.md](analysis/README.md). |
 | Tracked sample captures                    | Three synthetic `.bin` files under [samples/](samples/) so the GUI and CLI replay paths can be exercised without hardware. See [samples/README.md](samples/README.md). |
 | Bring-existing-firmware integration guide  | Done. [docs/FIRMWARE_INTEGRATION.md](docs/FIRMWARE_INTEGRATION.md) explains how someone with a working STM32 firmware (CubeMX project, ADC + DMA + USB CDC already streaming raw bytes) drops in our protocol module and gets the full host pipeline. |
-| ESP32-S3 firmware (alternative to STM32)   | Done. [firmware-esp32s3/](firmware-esp32s3/) is a PlatformIO project for the Waveshare ESP32-S3 R8 OPI board (same hardware family as rsvpnano). Streams framed packets over USB CDC, with WiFi + three OTA paths: hands-free release-pull from GitHub via the device's own web page (no PlatformIO, no esptool), ArduinoOTA push from PlatformIO, and ElegantOTA browser drop. Verified build (`pio run` succeeds; firmware.bin produced). |
-| ESP32-S3 release pipeline                  | Done. [.github/workflows/firmware-esp32s3-release.yml](.github/workflows/firmware-esp32s3-release.yml). Push to main → GitHub Actions builds the firmware, publishes a release named `firmware-esp32s3-YYMMDD-HHMMSS-<sha>` with `tinychaos-esp32s3.bin`, `tinychaos-esp32s3.factory.bin`, and `SHA256SUMS.txt` attached. Devices poll the latest release on boot and offer an "Update now" button on their built-in web page. |
+| Prebuilt firmware downloads                | Published to [GitHub Releases](https://github.com/gotnull/tinychaos/releases) (`firmware-h753-*`): ready-to-flash `tinychaos-h753-uart.bin` and `tinychaos-h753-usb.bin`. Drag onto the `NODE_H753ZI` USB drive - no toolchain needed. |
 | Host C# test suite (xUnit)                 | Code written; tests run by anyone with the .NET 8 SDK via `dotnet test`. |
 | Firmware portable protocol module (C)      | Done. Verified byte-identical to Python and C# references. |
 | Firmware on-host self-test                 | Passing. `make -C firmware test`.                  |
@@ -383,14 +382,6 @@ tinychaos/
     Core/Inc/                     entropy_config.h, entropy_protocol.h, usb_stream.h, serial_stream.h (portable, shared)
     Core/Src/                     entropy_protocol.c, usb_stream.c, serial_stream.c, main_skeleton.c (legacy ref)
     test/                         test_protocol_host.c
-  firmware-esp32s3/               ESP32-S3 firmware (PlatformIO + Arduino-ESP32 v3.x)
-    platformio.ini                pioarduino platform + ElegantOTA + AsyncWebServer deps
-    boards/                       esp32-s3-r8-opi.json (Waveshare board profile)
-    tools/inject_build_tag.py     stamps a UTC build tag into TINYCHAOS_BUILD_TAG
-    lib/tinychaos_protocol/       copies of entropy_config.h, entropy_protocol.h, entropy_protocol.c
-    src/main.cpp                  WiFi + ArduinoOTA + ElegantOTA + analogContinuous ADC + USB CDC
-    src/wifi_config.h.template    copy to wifi_config.h and fill in your network (gitignored)
-    README.md                     end-to-end run instructions (build, USB upload, OTA)
   analysis/                       .NET 8 host: Protocol library, CLI (tinychaos-host), Avalonia GUI (tinychaos-gui), xUnit tests
     TinyChaos.sln
     Directory.Build.props         RollForward=LatestMajor so apps run on .NET 9 or 10 when 8 runtime is absent
