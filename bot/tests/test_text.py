@@ -60,6 +60,31 @@ def test_split_long_respects_limit(bot):
     assert len(chunks) == 3
 
 
+def test_split_breaks_on_line_boundaries(bot):
+    text = "\n".join(f"line {i} with some words" for i in range(500))
+    chunks = list(bot._split(text, n=300))
+    assert all(len(c) <= 300 for c in chunks)
+    # no chunk starts or ends mid-line (every line is intact somewhere)
+    assert all(not c.startswith(" ") for c in chunks)
+
+
+def test_long_markdown_keeps_markdownv2_not_plain(bot):
+    """A long answer (>4096) must still render bold/code as MarkdownV2 chunks,
+    not get dumped as raw plain text (the literal-stars bug)."""
+    import asyncio
+    text = "\n".join(f"**Section {i}** with `code{i}` and detail." for i in range(200))
+    sent = []
+
+    async def fake_send(t, parse_mode, rm):
+        sent.append((t, parse_mode))
+        return object()
+
+    asyncio.run(bot._send_chunked_markdown(fake_send, text))
+    assert len(sent) >= 2                                   # it was chunked
+    assert all(pm is not None for _, pm in sent)            # every chunk is MarkdownV2
+    assert all("**" not in t for t, _ in sent)              # bold converted, no literal **
+
+
 # ---- _fmt_ago ------------------------------------------------------------
 
 def test_fmt_ago_none(bot):

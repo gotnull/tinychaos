@@ -321,39 +321,67 @@ def _fmt_ago(iso: str | None) -> str:
     return f"{int(secs // 86400)} d ago"
 
 
-def _split(text: str, n: int = 3900):
-    """Telegram caps messages at 4096 chars; yield <=n-char chunks."""
+def _split(text: str, n: int = 3000):
+    """Yield <=n-char chunks, breaking on line boundaries so inline markdown
+    (a `code` span or **bold** within a line) is never split mid-token. n is set
+    well below Telegram's 4096 because MarkdownV2 escaping inflates length (a
+    backslash before every . - ( ) ! etc.), so 3000 raw stays under 4096 escaped."""
     text = text.strip() or "(no answer)"
-    for i in range(0, len(text), n):
-        yield text[i:i + n]
+    if len(text) <= n:
+        yield text
+        return
+    buf = ""
+    for line in text.split("\n"):
+        if len(line) > n:                       # one giant line: flush then slice it
+            if buf:
+                yield buf
+                buf = ""
+            for i in range(0, len(line), n):
+                yield line[i:i + n]
+            continue
+        if buf and len(buf) + 1 + len(line) > n:
+            yield buf
+            buf = line
+        else:
+            buf = f"{buf}\n{line}" if buf else line
+    if buf:
+        yield buf
+
+
+async def _send_chunked_markdown(send, text: str, reply_markup=None):
+    """Send possibly-long markdown, PRESERVING MarkdownV2 formatting on long
+    messages by splitting into line-aligned chunks and rendering each (instead
+    of dumping the whole thing as raw plain text once it exceeds 4096 - the bug
+    that showed **bold** as literal *stars*). `send` is an async callable
+    (text, parse_mode, reply_markup) -> Message. The keyboard attaches to the
+    final chunk only. Per-chunk plain-text fallback only if Telegram rejects it."""
+    chunks = list(_split(text))
+    sent = None
+    for i, chunk in enumerate(chunks):
+        rm = reply_markup if i == len(chunks) - 1 else None
+        try:
+            md = telegramify_markdown.markdownify(chunk)
+        except Exception:
+            md = None
+        if md is not None and len(md) <= 4096:
+            try:
+                sent = await send(md, ParseMode.MARKDOWN_V2, rm)
+                continue
+            except Exception as e:
+                log.warning("MarkdownV2 chunk send failed (%s); plain fallback", e)
+        sent = await send(chunk, None, rm)
+    return sent
 
 
 async def _reply(msg, text: str, reply_markup=None):
-    """Send an answer to Telegram. Renders markdown - code blocks (```), inline
-    `code`, **bold**, etc. - via MarkdownV2 (which syntax-highlights fenced code
-    by language) when it fits and is valid. Falls back to plain-text chunks if
-    the converted message would exceed Telegram's 4096-char limit or Telegram
-    rejects the formatting, so a reply always gets through. An optional
-    reply_markup (inline keyboard) is attached to the final message sent.
-    Returns the last Message object sent (so callers can edit its buttons)."""
+    """Reply to Telegram with markdown rendering (code blocks, inline `code`,
+    **bold**) preserved even on long answers. Returns the last Message sent."""
     text = (text or "").strip() or "(no answer)"
-    try:
-        md = telegramify_markdown.markdownify(text)
-    except Exception:
-        md = None
-    if md is not None and len(md) <= 4096:
-        try:
-            return await msg.reply_text(md, parse_mode=ParseMode.MARKDOWN_V2,
-                                        reply_markup=reply_markup)
-        except Exception as e:
-            log.warning("MarkdownV2 send failed (%s); falling back to plain text", e)
-    sent = None
-    chunks = list(_split(text))
-    for i, chunk in enumerate(chunks):
-        # Attach the keyboard only to the last chunk.
-        rm = reply_markup if i == len(chunks) - 1 else None
-        sent = await msg.reply_text(chunk, reply_markup=rm)
-    return sent
+
+    async def send(t, parse_mode, rm):
+        return await msg.reply_text(t, parse_mode=parse_mode, reply_markup=rm)
+
+    return await _send_chunked_markdown(send, text, reply_markup)
 
 
 async def _run_claude(question: str, session_id: str | None, *, allowed: str,
@@ -695,21 +723,15 @@ async def on_mention(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 # ---- Owner-approved edits ------------------------------------------------
 
 async def _send_md(bot, chat_id: int, text: str) -> None:
-    """Send markdown text to a chat id (not as a reply), with the same
-    MarkdownV2-or-plain fallback as _reply."""
+    """Send markdown text to a chat id (not as a reply), preserving MarkdownV2
+    formatting on long messages (same chunked rendering as _reply)."""
     text = (text or "").strip() or "(empty)"
-    try:
-        md = telegramify_markdown.markdownify(text)
-    except Exception:
-        md = None
-    if md is not None and len(md) <= 4096:
-        try:
-            await bot.send_message(chat_id=chat_id, text=md, parse_mode=ParseMode.MARKDOWN_V2)
-            return
-        except Exception as e:
-            log.warning("md send to %s failed (%s); plain text", chat_id, e)
-    for chunk in _split(text):
-        await bot.send_message(chat_id=chat_id, text=chunk)
+
+    async def send(t, parse_mode, rm):
+        return await bot.send_message(chat_id=chat_id, text=t, parse_mode=parse_mode,
+                                      reply_markup=rm)
+
+    await _send_chunked_markdown(send, text)
 
 
 async def _safe_answer(query, text: str | None = None, alert: bool = False) -> None:
