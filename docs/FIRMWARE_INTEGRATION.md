@@ -160,7 +160,7 @@ If `bad_crc` is going up: check your `time_us` is monotonic and your `seq` is in
 
 ## Different MCU? Same story.
 
-The protocol module is plain C99 with no HAL dependencies, so it ports unchanged to anything with a C toolchain - any STM32, an ESP32, an RP2040, whatever you have. The pattern is always the same: configure your ADC + DMA, and in each DMA-complete callback call `entropy_packet_encode` on the batch and write the bytes to your transport (USB CDC or UART). The host side does not care which MCU produced the framed packets.
+The protocol module is plain C99 with no HAL dependencies, so it ports unchanged to anything with a C toolchain - any STM32, an RP2040, whatever you have. The pattern is always the same: configure your ADC + DMA, and in each DMA-complete callback call `entropy_packet_encode` on the batch and write the bytes to your transport (USB CDC or UART). The host side does not care which MCU produced the framed packets.
 
 ## Summary
 
