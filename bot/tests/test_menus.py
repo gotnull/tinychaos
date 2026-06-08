@@ -6,8 +6,8 @@ def _names(cmds):
     return [c.command for c in cmds]
 
 
-def test_public_menu_is_ask_and_help_only(bot):
-    assert _names(bot.PUBLIC_COMMANDS) == ["ask", "help"]
+def test_public_menu_is_ask_firmware_help(bot):
+    assert _names(bot.PUBLIC_COMMANDS) == ["ask", "firmware", "help"]
 
 
 def test_public_menu_excludes_admin_commands(bot):

@@ -473,7 +473,7 @@ async def _apply_edit(pending: dict) -> tuple[bool, str]:
         "The change you proposed earlier has been approved. Apply it now to the "
         "files in place, then summarise what you changed. Original request was: "
         + pending["question"])
-    text, _session, cost = await _run_claude(
+    text, _session, _cost = await _run_claude(
         instruction, pending.get("session_id"),
         allowed=EDIT_ALLOWED_TOOLS, disallowed=EDIT_DISALLOWED_TOOLS,
         system_prompt=EDIT_SYSTEM_PROMPT, timeout=CLAUDE_TIMEOUT)
@@ -485,10 +485,10 @@ async def _apply_edit(pending: dict) -> tuple[bool, str]:
 
     passed, test_report = await _run_tests()
     status = "✅ all tests pass" if passed else "⚠️ TESTS FAILING - review needed"
+    # No cost shown here - this report is posted to the group. Running cost is
+    # owner-only, via /stats.
     report = (f"{text.strip()}\n\n**Changed files**\n```\n{diff}\n```\n"
               f"**Tests ({status})**\n{test_report}")
-    if cost:
-        report += f"\n_apply cost ${cost:.3f}_"
     return (passed, report)
 
 
