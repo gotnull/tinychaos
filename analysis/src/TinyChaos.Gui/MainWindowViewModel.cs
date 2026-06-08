@@ -158,7 +158,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _buildLog = "";
     [ObservableProperty] private string _buildStatusText = "idle";
     [ObservableProperty] private IBrush _buildStatusDotBrush = StatusBrushes.Idle;
-    [ObservableProperty] private bool _isBusyBuilding;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanFlashSelectedBin))]
+    private bool _isBusyBuilding;
+
+    // A prebuilt firmware .bin (e.g. downloaded from GitHub Releases) the user
+    // picked via Browse; flashed with st-flash, no build/toolchain required.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanFlashSelectedBin))]
+    private string _selectedFirmwareBin = "";
+
+    public bool CanFlashSelectedBin =>
+        !IsBusyBuilding && !string.IsNullOrWhiteSpace(SelectedFirmwareBin) && File.Exists(SelectedFirmwareBin);
 
     // Recording (live capture only)
     [ObservableProperty] private bool _isRecording;
@@ -600,6 +611,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private Task RunFirmwareSelfTest() => RunFirmwareJobAsync("host test",
         onLine => _buildFlash.RunMakeAsync(FirmwareDirectory, "test", onLine));
+
+    // Flash a prebuilt .bin the user browsed to (no build, only st-flash needed).
+    [RelayCommand]
+    private Task FlashSelectedBin() => RunFirmwareJobAsync("flash .bin",
+        onLine => _buildFlash.RunStFlashAsync(SelectedFirmwareBin, onLine));
 
     [RelayCommand]
     private void ClearBuildLog() => BuildLog = "";

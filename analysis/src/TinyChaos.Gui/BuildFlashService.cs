@@ -104,6 +104,36 @@ public sealed class BuildFlashService
     }
 
     /// <summary>
+    /// Flash a prebuilt firmware <c>.bin</c> with <c>st-flash</c> - no build, no
+    /// compiler toolchain. Lets someone flash a downloaded release binary (e.g.
+    /// from GitHub Releases) straight onto the board. Returns the exit code; -1
+    /// if it could not start. (Needs only <c>st-flash</c>; if that is missing,
+    /// the user can still drag the .bin onto the NODE_H753ZI USB drive.)
+    /// </summary>
+    public Task<int> RunStFlashAsync(
+        string binPath,
+        Action<string> onLine,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(binPath) || !File.Exists(binPath))
+        {
+            onLine($"! firmware .bin not found: {binPath}");
+            return Task.FromResult(-1);
+        }
+        var psi = new ProcessStartInfo { FileName = "st-flash" };
+        psi.ArgumentList.Add("--connect-under-reset");
+        psi.ArgumentList.Add("--reset");
+        psi.ArgumentList.Add("write");
+        psi.ArgumentList.Add(binPath);
+        psi.ArgumentList.Add("0x08000000");
+        string hint = "! need st-flash on PATH (brew install stlink / choco install stlink) - "
+                    + "or just drag the .bin onto the NODE_H753ZI USB drive, no tools needed.";
+        return RunProcessAsync(
+            psi, $"$ st-flash --reset write \"{Path.GetFileName(binPath)}\" 0x08000000",
+            hint, onLine, cancellationToken);
+    }
+
+    /// <summary>
     /// Run <c>make</c> with the given Makefile target in the firmware directory.
     /// Used for the on-host protocol self-test (<c>make test</c>), which needs
     /// no STM32 toolchain. Returns the exit code; -1 if it could not start.

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 
 namespace TinyChaos.Gui;
 
@@ -59,6 +60,33 @@ public partial class MainWindow : Window
     /// <summary>"Reset view" button: return the saved-data viewer to full scale.</summary>
     private void OnResetViewer(object? sender, RoutedEventArgs e)
         => this.FindControl<SavedWaveformView>("SavedView")?.ResetView();
+
+    /// <summary>
+    /// "Browse…" button on the Firmware tab: pick a prebuilt firmware <c>.bin</c>
+    /// (e.g. one downloaded from GitHub Releases) and hand its path to the view
+    /// model, which can then flash it with st-flash - no build toolchain needed.
+    /// The file dialog needs the window's StorageProvider, hence code-behind.
+    /// </summary>
+    private async void OnBrowseFirmwareBin(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm) return;
+
+        // MainWindow is itself a TopLevel, so its StorageProvider drives the dialog.
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Select a firmware .bin to flash",
+            AllowMultiple = false,
+            FileTypeFilter = new[]
+            {
+                new FilePickerFileType("Firmware binary") { Patterns = new[] { "*.bin" } },
+                FilePickerFileTypes.All,
+            },
+        });
+
+        var picked = files.Count > 0 ? files[0] : null;
+        var path = picked?.TryGetLocalPath();
+        if (!string.IsNullOrEmpty(path)) vm.SelectedFirmwareBin = path;
+    }
 
     /// <summary>
     /// "Export" button: write the loaded capture's samples with all packet
