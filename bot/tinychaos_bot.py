@@ -389,30 +389,69 @@ async def _git_diff_stat() -> str:
         return f"(could not read git diff: {e})"
 
 
-async def _run_tests() -> tuple[bool, str]:
-    """Run the project's Python test suite (tools/) and return (passed, summary).
-    Used after an edit is applied so a change that breaks existing code is caught
-    and reported to the owner. A missing pytest/venv is reported, not fatal."""
-    tools_dir = REPO_DIR / "tools"
-    py = tools_dir / ".venv" / "bin" / "python"
-    py = str(py) if py.exists() else "python3"
-    if not (tools_dir / "tests").exists() and not (tools_dir / "pyproject.toml").exists():
-        return (True, "no test suite found (tools/tests) - skipped")
+async def _run_one_suite(argv: list[str], cwd, timeout: int) -> tuple[str, str]:
+    """Run one test command. Returns (state, summary) where state is
+    'pass' | 'fail' | 'skip'. On pass, summary is the last output line; on fail,
+    the last ~12 non-empty lines so the owner can SEE what broke."""
     try:
         proc = await asyncio.create_subprocess_exec(
-            py, "-m", "pytest", "-q", cwd=str(tools_dir),
+            *argv, cwd=str(cwd),
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
-        out, _ = await asyncio.wait_for(proc.communicate(), timeout=300)
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         text = out.decode(errors="replace").strip()
-        # Last non-empty line of pytest -q is the summary, e.g. "12 passed in 0.3s".
-        tail = next((ln for ln in reversed(text.splitlines()) if ln.strip()), text)[-300:]
-        return (proc.returncode == 0, tail or "(no pytest output)")
+        if proc.returncode == 0:
+            tail = next((ln for ln in reversed(text.splitlines()) if ln.strip()), "ok")
+            return ("pass", tail[-200:])
+        lines = [ln for ln in text.splitlines() if ln.strip()]
+        return ("fail", "\n".join(lines[-12:])[-1200:] or "(no output)")
     except FileNotFoundError:
-        return (True, "pytest not installed - tests skipped")
+        return ("skip", f"{argv[0]} not on PATH")
     except asyncio.TimeoutError:
-        return (False, "tests timed out after 300s")
+        return ("fail", f"timed out after {timeout}s")
     except Exception as e:
-        return (False, f"could not run tests: {e}")
+        return ("fail", f"could not run: {e}")
+
+
+async def _run_tests() -> tuple[bool, str]:
+    """Run EVERY test suite in the repo after an applied edit - the Python tools
+    suite, the bot's own suite, the C# .NET solution, AND the firmware on-host
+    self-test - so a change is verified across the whole project, in whatever
+    language it touched (not just Python). Returns (all_ran_passed, per-suite
+    report). A suite whose toolchain or directory is absent is skipped (reported,
+    not counted as a failure)."""
+    tools_dir = REPO_DIR / "tools"
+    analysis_dir = REPO_DIR / "analysis"
+    fw_dir = REPO_DIR / "firmware"
+
+    tools_py = tools_dir / ".venv" / "bin" / "python"
+    bot_py = BOT_DIR / ".venv" / "bin" / "python"
+    tools_py = str(tools_py) if tools_py.exists() else "python3"
+    bot_py = str(bot_py) if bot_py.exists() else "python3"
+
+    # (label, argv, cwd, timeout_seconds) - only the ones that actually exist.
+    suites: list[tuple[str, list[str], object, int]] = []
+    if (tools_dir / "tests").exists():
+        suites.append(("Python tools", [tools_py, "-m", "pytest", "-q"], tools_dir, 300))
+    if (BOT_DIR / "tests").exists():
+        suites.append(("Bot", [bot_py, "-m", "pytest", "-q"], BOT_DIR, 300))
+    if (analysis_dir / "TinyChaos.sln").exists():
+        suites.append(("C# (.NET)", ["dotnet", "test", "-c", "Debug", "--nologo"], analysis_dir, 600))
+    if (fw_dir / "Makefile").exists():
+        suites.append(("Firmware self-test", ["make", "test"], fw_dir, 180))
+
+    if not suites:
+        return (True, "no test suites found - skipped")
+
+    icon = {"pass": "✅", "fail": "⚠️", "skip": "⏭️"}
+    lines, all_ok = [], True
+    for label, argv, cwd, timeout in suites:
+        state, summary = await _run_one_suite(argv, cwd, timeout)
+        if state == "fail":
+            all_ok = False
+            lines.append(f"{icon[state]} {label}:\n```\n{summary}\n```")
+        else:
+            lines.append(f"{icon[state]} {label}: {summary}")
+    return (all_ok, "\n".join(lines))
 
 
 async def _apply_edit(pending: dict) -> tuple[bool, str]:
@@ -433,10 +472,10 @@ async def _apply_edit(pending: dict) -> tuple[bool, str]:
         # Nothing actually changed on disk - treat as a no-op, don't run tests.
         return (False, f"{text}\n\nNo files changed (nothing was written).")
 
-    passed, test_summary = await _run_tests()
-    status = "✅ tests pass" if passed else "⚠️ TESTS FAILING"
-    report = (f"{text.strip()}\n\n*Changed files*\n```\n{diff}\n```\n"
-              f"{status}: `{test_summary}`")
+    passed, test_report = await _run_tests()
+    status = "✅ all tests pass" if passed else "⚠️ TESTS FAILING - review needed"
+    report = (f"{text.strip()}\n\n**Changed files**\n```\n{diff}\n```\n"
+              f"**Tests ({status})**\n{test_report}")
     if cost:
         report += f"\n_apply cost ${cost:.3f}_"
     return (passed, report)

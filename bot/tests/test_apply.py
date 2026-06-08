@@ -90,7 +90,9 @@ def test_apply_passes_edit_tools_not_readonly(monkeypatch):
 
 
 def test_run_tests_skips_when_no_suite(monkeypatch, tmp_path):
-    monkeypatch.setattr(b, "REPO_DIR", tmp_path)  # empty dir, no tools/
+    # No tools/, analysis/, firmware/, or bot tests under this empty REPO_DIR.
+    monkeypatch.setattr(b, "REPO_DIR", tmp_path)
+    monkeypatch.setattr(b, "BOT_DIR", tmp_path)
     ok, summary = run(b._run_tests())
     assert ok is True
     assert "no test suite" in summary or "skipped" in summary
@@ -99,3 +101,44 @@ def test_run_tests_skips_when_no_suite(monkeypatch, tmp_path):
 def test_git_diff_stat_returns_string():
     out = run(b._git_diff_stat())
     assert isinstance(out, str)
+
+
+# ---- _run_one_suite: the per-suite runner used to verify EVERY language ----
+
+def test_run_one_suite_pass(tmp_path):
+    state, summary = run(b._run_one_suite(["true"], tmp_path, 30))
+    assert state == "pass"
+
+
+def test_run_one_suite_fail_captures_output(tmp_path):
+    # A command that prints then exits non-zero must be reported as a failure,
+    # with its output preserved so the owner can see what broke.
+    argv = ["python3", "-c", "print('boom detail'); import sys; sys.exit(1)"]
+    state, summary = run(b._run_one_suite(argv, tmp_path, 30))
+    assert state == "fail"
+    assert "boom detail" in summary
+
+
+def test_run_one_suite_missing_toolchain_skips(tmp_path):
+    state, summary = run(b._run_one_suite(["tinychaos-no-such-binary-zzz"], tmp_path, 30))
+    assert state == "skip"
+    assert "PATH" in summary
+
+
+def test_run_tests_aggregates_and_fails_if_any_fail(monkeypatch, tmp_path):
+    # Point REPO_DIR/BOT_DIR at a fake tree with a tools/tests so one suite is
+    # selected, and stub _run_one_suite so we control pass/fail aggregation.
+    (tmp_path / "tools" / "tests").mkdir(parents=True)
+    (tmp_path / "analysis").mkdir()
+    (tmp_path / "analysis" / "TinyChaos.sln").write_text("")
+    monkeypatch.setattr(b, "REPO_DIR", tmp_path)
+    monkeypatch.setattr(b, "BOT_DIR", tmp_path / "nobot")
+
+    async def fake_one(argv, cwd, timeout):
+        return ("fail", "1 failed") if "dotnet" in argv[0] else ("pass", "ok")
+    monkeypatch.setattr(b, "_run_one_suite", fake_one)
+
+    ok, report = run(b._run_tests())
+    assert ok is False                      # one suite failed -> overall fail
+    assert "C# (.NET)" in report
+    assert "Python tools" in report

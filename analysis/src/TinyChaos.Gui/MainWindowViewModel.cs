@@ -567,7 +567,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             ActiveTabIndex = 0;
         }
 
-        if (_autoZoomEnabled)
+        if (AutoZoomEnabled)
         {
             var (min, max) = Waveform.GetMinMax(0);
             if (max > min)
