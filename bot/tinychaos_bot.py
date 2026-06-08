@@ -168,6 +168,12 @@ def init_db() -> None:
                   "id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER, chat_title TEXT,"
                   " user_id INTEGER, username TEXT, question TEXT, answer TEXT,"
                   " cost_usd REAL, created_at TEXT)")
+        # answer_msg_ids: JSON list of the Telegram message ids the answer was
+        # sent as, so a later /fixlast can edit it in place (not just repost).
+        try:
+            c.execute("ALTER TABLE interactions ADD COLUMN answer_msg_ids TEXT")
+        except sqlite3.OperationalError:
+            pass  # column already exists
         # Owner-approved code-edit requests. Persisted so a pending approval
         # survives a bot/service restart (the callback only carries the token).
         c.execute("CREATE TABLE IF NOT EXISTS pending_edits("
@@ -224,11 +230,38 @@ def db_clear_session(chat_id: int) -> None:
         c.execute("DELETE FROM sessions WHERE chat_id=?", (chat_id,))
 
 
-def db_log(chat_id, title, user_id, username, question, answer, cost) -> None:
+def db_log(chat_id, title, user_id, username, question, answer, cost) -> int:
+    """Record one Q&A; return the new interaction id so the caller can attach
+    the sent message ids once the answer has actually been delivered."""
     with _db() as c:
-        c.execute("INSERT INTO interactions(chat_id, chat_title, user_id, username, question, "
-                  "answer, cost_usd, created_at) VALUES(?,?,?,?,?,?,?,?)",
-                  (chat_id, title, user_id, username, question, (answer or "")[:4000], cost, _now()))
+        cur = c.execute(
+            "INSERT INTO interactions(chat_id, chat_title, user_id, username, question, "
+            "answer, cost_usd, created_at) VALUES(?,?,?,?,?,?,?,?)",
+            (chat_id, title, user_id, username, question, (answer or "")[:4000], cost, _now()))
+        return cur.lastrowid
+
+
+def db_set_answer_msg_ids(interaction_id: int, msg_ids: list) -> None:
+    with _db() as c:
+        c.execute("UPDATE interactions SET answer_msg_ids=? WHERE id=?",
+                  (json.dumps(msg_ids), interaction_id))
+
+
+def db_get_last_answer(chat_id: int):
+    """Most recent answer in a chat that we recorded message ids for, as
+    (answer_text, [msg_id, ...]) - or None."""
+    with _db() as c:
+        row = c.execute(
+            "SELECT answer, answer_msg_ids FROM interactions "
+            "WHERE chat_id=? AND answer_msg_ids IS NOT NULL ORDER BY id DESC LIMIT 1",
+            (chat_id,)).fetchone()
+    if not row:
+        return None
+    try:
+        ids = json.loads(row[1]) if row[1] else []
+    except (ValueError, TypeError):
+        ids = []
+    return (row[0], ids)
 
 
 def db_add_pending(token, orig_chat_id, orig_msg_id, chat_title,
@@ -354,9 +387,10 @@ async def _send_chunked_markdown(send, text: str, reply_markup=None):
     of dumping the whole thing as raw plain text once it exceeds 4096 - the bug
     that showed **bold** as literal *stars*). `send` is an async callable
     (text, parse_mode, reply_markup) -> Message. The keyboard attaches to the
-    final chunk only. Per-chunk plain-text fallback only if Telegram rejects it."""
+    final chunk only. Per-chunk plain-text fallback only if Telegram rejects it.
+    Returns the list of sent Message objects (one per chunk)."""
     chunks = list(_split(text))
-    sent = None
+    sent = []
     for i, chunk in enumerate(chunks):
         rm = reply_markup if i == len(chunks) - 1 else None
         try:
@@ -365,17 +399,17 @@ async def _send_chunked_markdown(send, text: str, reply_markup=None):
             md = None
         if md is not None and len(md) <= 4096:
             try:
-                sent = await send(md, ParseMode.MARKDOWN_V2, rm)
+                sent.append(await send(md, ParseMode.MARKDOWN_V2, rm))
                 continue
             except Exception as e:
                 log.warning("MarkdownV2 chunk send failed (%s); plain fallback", e)
-        sent = await send(chunk, None, rm)
+        sent.append(await send(chunk, None, rm))
     return sent
 
 
 async def _reply(msg, text: str, reply_markup=None):
     """Reply to Telegram with markdown rendering (code blocks, inline `code`,
-    **bold**) preserved even on long answers. Returns the last Message sent."""
+    **bold**) preserved even on long answers. Returns the list of sent Messages."""
     text = (text or "").strip() or "(no answer)"
 
     async def send(t, parse_mode, rm):
@@ -664,7 +698,7 @@ async def _run_ask(update: Update, context: ContextTypes.DEFAULT_TYPE, question:
     # owner-approved "Apply" button. The button carries a short token; the
     # request context is persisted so it survives a restart.
     answer, edit_available = _strip_edit_marker(answer)
-    db_log(chat_id, title, user_id, username, question, answer, cost)
+    interaction_id = db_log(chat_id, title, user_id, username, question, answer, cost)
 
     markup = None
     token = None
@@ -673,8 +707,14 @@ async def _run_ask(update: Update, context: ContextTypes.DEFAULT_TYPE, question:
         markup = InlineKeyboardMarkup(
             [[InlineKeyboardButton("✏️ Apply this change", callback_data=f"apply:{token}")]])
     sent = await _reply(msg, answer, reply_markup=markup)
+    # Record the message ids this answer was sent as, so /fixlast can re-render
+    # it in place if the formatting ever comes out wrong.
+    msg_ids = [m.message_id for m in (sent or []) if m is not None]
+    if msg_ids:
+        db_set_answer_msg_ids(interaction_id, msg_ids)
     if edit_available and token:
-        db_add_pending(token, chat_id, sent.message_id if sent else 0, title,
+        last_id = msg_ids[-1] if msg_ids else 0
+        db_add_pending(token, chat_id, last_id, title,
                        user_id, username, question, session)
 
 
@@ -908,6 +948,38 @@ async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.effective_message.reply_text("Context cleared - next question starts fresh.")
 
 
+async def cmd_fixlast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Owner-only: re-render this chat's last answer IN PLACE (edit the original
+    messages), in case it came out as raw markdown. Uses the message ids recorded
+    when the answer was sent, so it's a real edit, not a repost."""
+    user = update.effective_user
+    if not user or user.id != BOT_OWNER:
+        await update.effective_message.reply_text(
+            "I'm sorry Dave, I'm afraid /fixlast is for the mission commander only.")
+        return
+    last = db_get_last_answer(update.effective_chat.id)
+    if not last or not last[1]:
+        await update.effective_message.reply_text("No recorded answer here to reformat.")
+        return
+    answer, ids = last
+    chunks = list(_split(answer))
+    edited = 0
+    for mid, chunk in zip(ids, chunks):
+        try:
+            md = telegramify_markdown.markdownify(chunk)
+        except Exception:
+            md = chunk
+        try:
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id, message_id=mid, text=md,
+                parse_mode=ParseMode.MARKDOWN_V2)
+            edited += 1
+        except Exception as e:
+            log.warning("fixlast edit of msg %s failed: %s", mid, e)
+    await update.effective_message.reply_text(
+        f"Reformatted {edited}/{len(ids)} message(s) of the last answer.")
+
+
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show how many questions have been answered and the running Claude cost.
     Owner-only, but works anywhere (incl. a DM) - it's gated by user, not chat,
@@ -995,6 +1067,7 @@ ADMIN_COMMANDS = [
     _FIRMWARE,
     BotCommand("stats", "Questions answered + running cost"),
     BotCommand("reset", "Clear this chat's conversation context"),
+    BotCommand("fixlast", "Re-render the last answer in place"),
     _HELP,
 ]
 
@@ -1042,6 +1115,7 @@ def main() -> None:
     app.add_handler(CommandHandler("ask", cmd_ask))
     app.add_handler(CommandHandler("firmware", cmd_firmware))
     app.add_handler(CommandHandler("reset", cmd_reset))
+    app.add_handler(CommandHandler("fixlast", cmd_fixlast))
     app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(CommandHandler("chatid", cmd_chatid))
     app.add_handler(CommandHandler(["help", "start"], cmd_help))

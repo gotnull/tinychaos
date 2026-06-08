@@ -117,3 +117,32 @@ def test_stats_session_count(tmp_db):
     tmp_db.db_set_session(1, "s1")
     tmp_db.db_set_session(2, "s2")
     assert tmp_db.db_stats()["sessions"] == 2
+
+
+# ---- answer message-id recording (for /fixlast in-place edits) ----
+
+def test_db_log_returns_interaction_id(tmp_db):
+    iid = tmp_db.db_log(-100, "G", 1, "alice", "q", "a", 0.01)
+    assert isinstance(iid, int) and iid > 0
+
+
+def test_answer_msg_ids_roundtrip(tmp_db):
+    iid = tmp_db.db_log(-100, "G", 1, "alice", "the answer", "the answer", 0.0)
+    tmp_db.db_set_answer_msg_ids(iid, [501, 502])
+    answer, ids = tmp_db.db_get_last_answer(-100)
+    assert answer == "the answer"
+    assert ids == [501, 502]
+
+
+def test_get_last_answer_none_when_unrecorded(tmp_db):
+    tmp_db.db_log(-100, "G", 1, "alice", "q", "a", 0.0)  # no msg ids attached
+    assert tmp_db.db_get_last_answer(-100) is None
+
+
+def test_get_last_answer_picks_newest_recorded(tmp_db):
+    i1 = tmp_db.db_log(-100, "G", 1, "a", "q1", "first", 0.0)
+    tmp_db.db_set_answer_msg_ids(i1, [1])
+    i2 = tmp_db.db_log(-100, "G", 1, "a", "q2", "second", 0.0)
+    tmp_db.db_set_answer_msg_ids(i2, [2, 3])
+    answer, ids = tmp_db.db_get_last_answer(-100)
+    assert answer == "second" and ids == [2, 3]
