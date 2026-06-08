@@ -140,6 +140,7 @@ public sealed class SavedWaveformView : Control
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
+        Focus();
         if (Buffer is null) return;
         _dragging = true;
         _dragStart = e.GetPosition(this);
@@ -179,6 +180,12 @@ public sealed class SavedWaveformView : Control
         base.OnPointerReleased(e);
         _dragging = false;
         e.Pointer.Capture(null);
+    }
+
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        base.OnPointerCaptureLost(e);
+        _dragging = false;
     }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)

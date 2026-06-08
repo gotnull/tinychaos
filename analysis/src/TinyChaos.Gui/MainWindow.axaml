@@ -305,10 +305,10 @@
                                     <Panel>
                                         <local:SavedWaveformView x:Name="SavedView"
                                             Buffer="{Binding LoadedCapture}" />
-                                        <TextBlock Classes="caption" Text="{Binding #SavedView.RangeText}"
+                                        <TextBlock IsHitTestVisible="False" Classes="caption" Text="{Binding #SavedView.RangeText}"
                                             HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                             Margin="0,0,8,4" />
-                                        <TextBlock Classes="caption"
+                                        <TextBlock IsHitTestVisible="False" Classes="caption"
                                             Text="drag = pan · wheel = zoom time · Shift+wheel = zoom value"
                                             HorizontalAlignment="Left" VerticalAlignment="Bottom"
                                             Margin="56,0,0,4" Foreground="{DynamicResource TextTertiary}" />
