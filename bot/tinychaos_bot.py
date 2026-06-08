@@ -33,6 +33,7 @@ import random
 import re
 import sqlite3
 import time
+import urllib.request
 import uuid
 from pathlib import Path
 
@@ -60,6 +61,10 @@ BOT_OWNER = int(os.getenv("TINYCHAOS_BOT_OWNER", "680585616"))
 _allowed = os.getenv("TINYCHAOS_BOT_ALLOWED_CHATS", "").strip()
 ALLOWED_CHATS = {int(x) for x in _allowed.split(",") if x.strip()} if _allowed else None
 CLAUDE_TIMEOUT = 150  # seconds per question
+
+# /firmware: where to find prebuilt firmware (public GitHub Releases, no auth).
+GITHUB_REPO = os.getenv("TINYCHAOS_GH_REPO", "gotnull/tinychaos").strip()
+FIRMWARE_TAG_PREFIX = "firmware-h753-"
 
 # A marker the answering Claude appends when its reply proposes a concrete code
 # change. The bot strips it from the displayed text and, when present, offers an
@@ -497,6 +502,58 @@ def _allowed_here(update: Update) -> bool:
     return bool(chat and chat.id in ALLOWED_CHATS)
 
 
+def _pick_firmware_release(releases: list) -> tuple | None:
+    """From a GitHub /releases list (newest first), return (html_url, tag,
+    [(asset_name, download_url), ...]) for the newest firmware-h753-* release,
+    or None. Pure (no network) so it's unit-testable."""
+    for rel in releases:
+        if (rel.get("tag_name") or "").startswith(FIRMWARE_TAG_PREFIX):
+            assets = [(a.get("name"), a.get("browser_download_url"))
+                      for a in rel.get("assets", []) if a.get("name")]
+            return (rel.get("html_url"), rel.get("tag_name"), assets)
+    return None
+
+
+def _fetch_latest_firmware() -> tuple | None:
+    """Blocking GitHub REST call (run in an executor). Public repo, no auth."""
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/releases?per_page=30"
+    req = urllib.request.Request(
+        url, headers={"Accept": "application/vnd.github+json", "User-Agent": "tinychaos-bot"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return _pick_firmware_release(json.load(r))
+
+
+async def cmd_firmware(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Reply with the latest prebuilt NUCLEO-H753ZI firmware download + how to
+    flash it (drag-drop, no toolchain)."""
+    if not _allowed_here(update):
+        await update.effective_message.reply_text(_next_hal())
+        return
+    msg = update.effective_message
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(None, _fetch_latest_firmware)
+    except Exception as e:
+        log.warning("firmware fetch failed: %s", e)
+        result = None
+    if not result:
+        await msg.reply_text(
+            "I couldn't reach GitHub just now - grab it from the Releases page: "
+            f"https://github.com/{GITHUB_REPO}/releases")
+        return
+    html_url, tag, assets = result
+    lines = [f"**Latest NUCLEO-H753ZI firmware** — `{tag}`", "", html_url]
+    if assets:
+        lines += ["", "**Downloads**"]
+        lines += [f"- [{name}]({dl})" for name, dl in assets]
+    lines += [
+        "",
+        "**Flash it (no tools):** plug in the board, a USB drive `NODE_H753ZI` "
+        "appears, drag `tinychaos-h753-uart.bin` onto it. Done - the on-board "
+        "ST-LINK flashes it. Then open the GUI, pick the ST-LINK serial port, Connect.",
+    ]
+    await _reply(msg, "\n".join(lines))
+
+
 async def _typing_loop(bot, chat_id: int) -> None:
     """Keep the 'typing…' indicator alive for the whole run. A single
     sendChatAction only shows for ~5s, but the repo-aware search takes longer,
@@ -852,6 +909,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Tiny Chaos repo assistant - I read this codebase live and answer questions.\n"
         "  @mention me with a question, e.g. \"@bot how does the USB CDC path work?\"\n"
         "  /ask <question>  - same thing as a command\n"
+        "  /firmware        - latest NUCLEO firmware download + how to flash\n"
         "  /stats           - questions answered + running cost\n\n"
         "I answer read-only. If an answer proposes a concrete code change, an "
         "\"Apply this change\" button appears - tapping it asks the admin to "
@@ -867,11 +925,13 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 # restart; the new menu pushes automatically.
 _ASK = BotCommand("ask", "Ask about the Tiny Chaos repo (I read it live)")
 _HELP = BotCommand("help", "What I can do")
-# Everyone sees just ask + help.
-PUBLIC_COMMANDS = [_ASK, _HELP]
+_FIRMWARE = BotCommand("firmware", "Latest NUCLEO firmware download + how to flash")
+# Everyone sees ask + firmware + help.
+PUBLIC_COMMANDS = [_ASK, _FIRMWARE, _HELP]
 # The owner also sees the admin commands (stats, reset).
 ADMIN_COMMANDS = [
     _ASK,
+    _FIRMWARE,
     BotCommand("stats", "Questions answered + running cost"),
     BotCommand("reset", "Clear this chat's conversation context"),
     _HELP,
@@ -919,6 +979,7 @@ def main() -> None:
     app = (Application.builder().token(TOKEN)
            .post_init(_post_init).concurrent_updates(True).build())
     app.add_handler(CommandHandler("ask", cmd_ask))
+    app.add_handler(CommandHandler("firmware", cmd_firmware))
     app.add_handler(CommandHandler("reset", cmd_reset))
     app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(CommandHandler("chatid", cmd_chatid))
