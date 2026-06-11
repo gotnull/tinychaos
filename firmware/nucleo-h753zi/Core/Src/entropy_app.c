@@ -86,7 +86,7 @@
  * the timer kernel clock beyond that; we don't read TIMPRE here, so the true
  * rate runs a little above target. Harmless (still well under the UART
  * ceiling, stream is gap-free). TODO(next dev): factor TIMPRE in for exact. */
-#define SAMPLE_RATE_HZ   10000U
+#define SAMPLE_RATE_HZ   500000U
 
 ADC_HandleTypeDef  hadc1;
 TIM_HandleTypeDef  htim3;
@@ -243,7 +243,7 @@ static void adc1_init(void)
   HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
 
   hadc1.Instance = ADC1;
-  hadc1.Init.ClockPrescaler        = ADC_CLOCK_ASYNC_DIV4;
+  hadc1.Init.ClockPrescaler        = ADC_CLOCK_ASYNC_DIV2;
   hadc1.Init.Resolution            = ADC_RESOLUTION_12B;
   hadc1.Init.ScanConvMode          = ADC_SCAN_ENABLE;   /* 2-channel group */
   hadc1.Init.EOCSelection          = ADC_EOC_SINGLE_CONV;
@@ -268,7 +268,7 @@ static void adc1_init(void)
    *   rank 1 -> host channel 0 (zener, PA3/INP15)
    *   rank 2 -> host channel 1 (baseline, PC0/INP10) */
   ADC_ChannelConfTypeDef ch = {0};
-  ch.SamplingTime = ADC_SAMPLETIME_64CYCLES_5;
+  ch.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
   ch.SingleDiff   = ADC_SINGLE_ENDED;
   ch.OffsetNumber = ADC_OFFSET_NONE;
   ch.Offset       = 0;
