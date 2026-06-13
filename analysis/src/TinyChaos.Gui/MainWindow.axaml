@@ -166,9 +166,12 @@
 
                     <!-- Statistics card -->
                     <Border Grid.Row="4" Classes="card">
-                        <Grid RowDefinitions="Auto,8,Auto">
+                        <Grid RowDefinitions="Auto,8,Auto,12,Auto,6,Auto">
                             <TextBlock Grid.Row="0" Classes="h1" Text="PER-CHANNEL STATISTICS" />
                             <TextBlock Grid.Row="2" Classes="mono" Text="{Binding StatsText}" />
+                            <TextBlock Grid.Row="4" Classes="h1"
+                                Text="SPIKE ACTIVITY  (channel 0 / zener)" />
+                            <TextBlock Grid.Row="6" Classes="mono" Text="{Binding SpikeRateText}" />
                         </Grid>
                     </Border>
                 </Grid>

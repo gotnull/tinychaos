@@ -181,6 +181,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _harvestButtonLabel = "Harvest";
     [ObservableProperty] private string _harvestStatusText = "";
 
+    // Live zener spike-activity readout (avalanche-quality metric, updated 10 Hz).
+    [ObservableProperty] private string _spikeRateText = "waiting for data…";
+
     public WaveformModel Waveform { get; }
     public HistogramModel Histogram { get; }
 
@@ -607,6 +610,22 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             }
         }
         StatsText = sb.ToString().TrimEnd();
+
+        // Spike activity on the zener channel: up/down crossings of the rolling
+        // noise baseline over the last N samples, plus a density % - the live
+        // "how much avalanche is my circuit producing" number.
+        var sr = s.SpikeRate;
+        if (sr.Filled == 0)
+        {
+            SpikeRateText = "waiting for data…";
+        }
+        else
+        {
+            SpikeRateText =
+                $"▲ {sr.Up,7:N0} up    ▼ {sr.Down,7:N0} down    " +
+                $"{sr.Percent,6:F2}% active    " +
+                $"({sr.Total:N0} spikes in last {sr.Filled:N0} samples)";
+        }
 
         PacketsText = s.Packets.ToString("N0");
         BadCrcText = s.BadCrc.ToString("N0");

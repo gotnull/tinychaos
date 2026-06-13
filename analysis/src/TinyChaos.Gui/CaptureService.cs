@@ -25,7 +25,9 @@ public sealed record CaptureSnapshot(
     // True if at least one packet with the device-tap flag (FLAGS bit 0)
     // arrived since the previous Snapshot(). Latched on the read thread and
     // cleared on read so the UI sees each tap exactly once.
-    bool DeviceTapped);
+    bool DeviceTapped,
+    // Live zener spike activity over a sliding window (avalanche-quality metric).
+    SpikeRateSnapshot SpikeRate);
 
 public sealed record RollingStatsSnapshot(long Count, double Mean, double Std, double Min, double Max);
 
@@ -62,6 +64,10 @@ public sealed class CaptureService : IDisposable
     // Optional entropy harvest. When active, channel-0 (zener) samples are
     // fed to the model which detects spikes and writes hex bytes to a file.
     private EntropyHarvestModel? _harvest;
+
+    // Always-on zener spike-rate meter (same spike test as harvest, but no file).
+    // Feeds a live "how much avalanche activity" statistic to the UI.
+    private readonly SpikeRateModel _spikeRate = new();
 
     public bool IsRunning { get; private set; }
     public bool IsRecording => _recordingStream != null;
@@ -175,6 +181,7 @@ public sealed class CaptureService : IDisposable
             _dropTracker = new DropTracker();
             _rate = new RateEstimator();
             _channelStats = new ChannelStats(_channelCount);
+            _spikeRate.Reset();
         }
         _waveform.Clear();
         _histogram.Clear();
@@ -245,7 +252,8 @@ public sealed class CaptureService : IDisposable
                 Stm32RateHz: _rate.Stm32RateHz() ?? 0.0,
                 HostRateHz: _rate.HostRateHz() ?? 0.0,
                 ChannelStats: perChannel,
-                DeviceTapped: tapped);
+                DeviceTapped: tapped,
+                SpikeRate: _spikeRate.Snapshot());
         }
     }
 
@@ -305,7 +313,11 @@ public sealed class CaptureService : IDisposable
                         _channelStats.Add(ch, v);
                         _waveform.Append(ch, v);
                         _histogram.Add(ch, v);
-                        if (ch == 0) _harvest?.Feed(v);
+                        if (ch == 0)
+                        {
+                            _harvest?.Feed(v);
+                            _spikeRate.Feed(v);
+                        }
                     }
                 }
                 break;

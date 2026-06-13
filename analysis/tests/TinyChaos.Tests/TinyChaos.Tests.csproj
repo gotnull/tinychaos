@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\TinyChaos.Protocol\TinyChaos.Protocol.csproj" />
     <ProjectReference Include="..\..\src\TinyChaos.Host\TinyChaos.Host.csproj" />
+    <ProjectReference Include="..\..\src\TinyChaos.Gui\TinyChaos.Gui.csproj" />
   </ItemGroup>
 
 </Project>
