@@ -60,9 +60,11 @@ COOLDOWN = float(os.getenv("TINYCHAOS_BOT_COOLDOWN", "15"))
 BOT_OWNER = int(os.getenv("TINYCHAOS_BOT_OWNER", "680585616"))
 _allowed = os.getenv("TINYCHAOS_BOT_ALLOWED_CHATS", "").strip()
 ALLOWED_CHATS = {int(x) for x in _allowed.split(",") if x.strip()} if _allowed else None
-# Seconds per claude run. Repo-wide / multi-file questions and edit-applies can
-# take a while; 150s was too low (kept timing out). Override via env if needed.
-CLAUDE_TIMEOUT = float(os.getenv("TINYCHAOS_BOT_TIMEOUT", "300"))
+# Seconds per claude run. Big feature-design questions read many files (lots of
+# Read/Grep calls) and can run several minutes; 300s still timed those out on a
+# FRESH session, so give more headroom. Normal questions finish in well under a
+# minute, so this only affects the heavy ones. Override via env if needed.
+CLAUDE_TIMEOUT = float(os.getenv("TINYCHAOS_BOT_TIMEOUT", "480"))
 
 # /firmware: where to find prebuilt firmware (public GitHub Releases, no auth).
 GITHUB_REPO = os.getenv("TINYCHAOS_GH_REPO", "gotnull/tinychaos").strip()
